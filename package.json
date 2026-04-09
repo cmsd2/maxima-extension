@@ -7,7 +7,8 @@
     "vscode": "^1.82.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Debuggers"
   ],
   "publisher": "OhtaYasuhiro",
   "repository": {
@@ -85,8 +86,79 @@
           "type": "string",
           "default": "",
           "description": "Absolute path to the maxima-lsp binary. If empty, searches PATH."
+        },
+        "maxima.dap.path": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the maxima-dap binary. If empty, searches PATH."
+        },
+        "maxima.maximaPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the maxima binary. Used by the debugger. If empty, searches PATH."
         }
       }
-    }
+    },
+    "breakpoints": [
+      {
+        "language": "maxima"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "maxima",
+        "languages": ["maxima"],
+        "label": "Maxima Debug",
+        "configurationAttributes": {
+          "launch": {
+            "required": ["program"],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Absolute path to the .mac file to debug.",
+                "default": "${file}"
+              },
+              "evaluate": {
+                "type": "string",
+                "description": "Expression to evaluate after loading the program (e.g. \"main()\").",
+                "default": ""
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Stop on the first statement.",
+                "default": false
+              },
+              "maximaPath": {
+                "type": "string",
+                "description": "Path to the maxima binary. Overrides maxima.maximaPath setting.",
+                "default": ""
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "maxima",
+            "request": "launch",
+            "name": "Debug Maxima File",
+            "program": "${file}",
+            "evaluate": ""
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Maxima: Debug File",
+            "description": "Load a .mac file and debug it.",
+            "body": {
+              "type": "maxima",
+              "request": "launch",
+              "name": "Debug ${1:file}",
+              "program": "^\"\\${file}\"",
+              "evaluate": "${2:main()}"
+            }
+          }
+        ]
+      }
+    ]
   }
 }
