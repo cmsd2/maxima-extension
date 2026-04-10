@@ -4,7 +4,7 @@
   "description": "VSCode Extension for Maxima, a Computer Algebra system",
   "version": "0.1.0",
   "engines": {
-    "vscode": "^1.82.0"
+    "vscode": "^1.99.0"
   },
   "categories": [
     "Programming Languages",
@@ -96,9 +96,42 @@
           "type": "string",
           "default": "",
           "description": "Absolute path to the maxima binary. Used by the debugger. If empty, searches PATH."
+        },
+        "maxima.mcp.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the Maxima MCP server so that VS Code and AI agents can discover and use it."
+        },
+        "maxima.mcp.transport": {
+          "type": "string",
+          "enum": ["stdio", "http"],
+          "default": "http",
+          "description": "Transport used to communicate with the MCP server."
+        },
+        "maxima.mcp.path": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the MCP tool binary (stdio transport)."
+        },
+        "maxima.mcp.args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Command-line arguments passed to the MCP tool (stdio transport)."
+        },
+        "maxima.mcp.url": {
+          "type": "string",
+          "default": "http://localhost:8000/mcp",
+          "description": "URL of the MCP server (http transport)."
         }
       }
     },
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "maxima.mcpServer",
+        "label": "Maxima MCP Server"
+      }
+    ],
     "breakpoints": [
       {
         "language": "maxima"

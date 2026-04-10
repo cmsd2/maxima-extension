@@ -67,6 +67,54 @@ export async function activate(
     }),
   );
 
+  // --- MCP server provider ---
+  const mcpChanged = new vscode.EventEmitter<void>();
+  context.subscriptions.push(mcpChanged);
+  context.subscriptions.push(
+    vscode.lm.registerMcpServerDefinitionProvider("maxima.mcpServer", {
+      onDidChangeMcpServerDefinitions: mcpChanged.event,
+      provideMcpServerDefinitions() {
+        const cfg = vscode.workspace.getConfiguration("maxima");
+        const enabled = cfg.get<boolean>("mcp.enabled", false);
+        if (!enabled) {
+          return [];
+        }
+        const transport = cfg.get<string>("mcp.transport", "http");
+        if (transport === "http") {
+          const url = cfg.get<string>("mcp.url", "http://localhost:8000/mcp").trim();
+          if (!url) {
+            return [];
+          }
+          return [
+            new vscode.McpHttpServerDefinition(
+              "Maxima MCP",
+              vscode.Uri.parse(url),
+            ),
+          ];
+        }
+        const mcpPath = cfg.get<string>("mcp.path", "").trim();
+        if (!mcpPath) {
+          return [];
+        }
+        const mcpArgs = cfg.get<string[]>("mcp.args", []);
+        return [
+          new vscode.McpStdioServerDefinition(
+            "Maxima MCP",
+            mcpPath,
+            mcpArgs,
+          ),
+        ];
+      },
+    }),
+  );
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("maxima.mcp")) {
+        mcpChanged.fire();
+      }
+    }),
+  );
+
   // --- LSP client ---
   const config = vscode.workspace.getConfiguration("maxima");
   const lspEnabled = config.get<boolean>("lsp.enabled", true);
@@ -168,7 +216,11 @@ class MaximaDapDescriptorFactory
     const command = dapPath || "maxima-dap";
 
     return new vscode.DebugAdapterExecutable(command, [], {
-      env: { ...process.env, RUST_LOG: "maxima_dap=debug" },
+      env: {
+        ...process.env,
+        RUST_LOG: "maxima_dap=debug",
+        MAXIMA_DAP_LOG: "/tmp/maxima-dap.log",
+      },
     });
   }
 }
