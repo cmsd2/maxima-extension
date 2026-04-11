@@ -5,8 +5,13 @@ import {
   LanguageClientOptions,
   ServerOptions,
 } from "vscode-languageclient/node";
+import { McpProcessManager } from "./notebook/mcpClient";
+import { MaximaNotebookSerializer } from "./notebook/serializer";
+import { NotebookController, NOTEBOOK_TYPE } from "./notebook/controller";
 
 let client: LanguageClient | undefined;
+let mcpManager: McpProcessManager | undefined;
+let notebookController: NotebookController | undefined;
 
 export async function activate(
   context: vscode.ExtensionContext,
@@ -88,6 +93,53 @@ export async function activate(
       await context.secrets.delete(MCP_TOKEN_KEY);
       mcpChanged.fire();
       vscode.window.showInformationMessage("Maxima MCP token cleared.");
+    }),
+  );
+
+  // --- Notebook support ---
+  const notebookOutput = vscode.window.createOutputChannel("Maxima Notebook");
+  context.subscriptions.push(notebookOutput);
+
+  mcpManager = new McpProcessManager(notebookOutput);
+  notebookController = new NotebookController(mcpManager);
+
+  context.subscriptions.push(
+    vscode.workspace.registerNotebookSerializer(
+      NOTEBOOK_TYPE,
+      new MaximaNotebookSerializer(),
+      { transientOutputs: false },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidOpenNotebookDocument((notebook) => {
+      if (notebook.notebookType === NOTEBOOK_TYPE) {
+        notebookController?.onNotebookOpen(notebook);
+      }
+    }),
+  );
+  context.subscriptions.push(
+    vscode.workspace.onDidCloseNotebookDocument((notebook) => {
+      if (notebook.notebookType === NOTEBOOK_TYPE) {
+        notebookController?.onNotebookClose(notebook);
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("maxima.notebook.restartKernel", () => {
+      const notebook = vscode.window.activeNotebookEditor?.notebook;
+      if (notebook && notebook.notebookType === NOTEBOOK_TYPE) {
+        notebookController?.restartKernel(notebook);
+      }
+    }),
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("maxima.notebook.interruptKernel", () => {
+      const notebook = vscode.window.activeNotebookEditor?.notebook;
+      if (notebook && notebook.notebookType === NOTEBOOK_TYPE) {
+        notebookController?.interruptKernel(notebook);
+      }
     }),
   );
 
@@ -190,7 +242,10 @@ export async function activate(
   };
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: "file", language: "maxima" }],
+    documentSelector: [
+      { scheme: "file", language: "maxima" },
+      { scheme: "vscode-notebook-cell", language: "maxima" },
+    ],
   };
 
   client = new LanguageClient(
@@ -220,6 +275,14 @@ export async function activate(
 }
 
 export async function deactivate(): Promise<void> {
+  if (notebookController) {
+    notebookController.dispose();
+    notebookController = undefined;
+  }
+  if (mcpManager) {
+    await mcpManager.dispose();
+    mcpManager = undefined;
+  }
   if (client) {
     await client.stop();
     client = undefined;

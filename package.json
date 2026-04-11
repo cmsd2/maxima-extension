@@ -16,7 +16,9 @@
     "url": "https://github.com/yshl/maxima-extension.git"
   },
   "main": "./out/extension.js",
-  "activationEvents": [],
+  "activationEvents": [
+    "onNotebook:maxima-notebook"
+  ],
   "scripts": {
     "compile": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
@@ -25,6 +27,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
@@ -34,6 +37,16 @@
     "esbuild": "^0.21.0"
   },
   "contributes": {
+    "notebooks": [
+      {
+        "type": "maxima-notebook",
+        "displayName": "Maxima Notebook",
+        "selector": [
+          { "filenamePattern": "*.ipynb" }
+        ],
+        "priority": "option"
+      }
+    ],
     "languages": [{
       "id": "maxima",
       "aliases": ["Maxima", "maxima"],
@@ -58,6 +71,16 @@
       {
         "command": "maxima.clearMcpToken",
         "title": "Maxima: Clear MCP Token"
+      },
+      {
+        "command": "maxima.notebook.restartKernel",
+        "title": "Maxima: Restart Kernel",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "maxima.notebook.interruptKernel",
+        "title": "Maxima: Interrupt Kernel",
+        "icon": "$(debug-stop)"
       }
     ],
     "menus": {
@@ -73,6 +96,13 @@
           "command": "maxima.runFile",
           "when": "editorLangId == maxima",
           "group": "1_run"
+        }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "maxima.notebook.restartKernel",
+          "when": "notebookType == 'maxima-notebook'",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
@@ -131,6 +161,16 @@
           "type": "string",
           "default": "http://localhost:8000/mcp",
           "description": "URL of the MCP server (http transport)."
+        },
+        "maxima.notebook.mcpPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to aximar-mcp binary. If empty, searches PATH."
+        },
+"maxima.notebook.evalTimeout": {
+          "type": "number",
+          "default": 60,
+          "description": "Cell evaluation timeout in seconds."
         }
       }
     },

@@ -1,0 +1,297 @@
+# Notebook Debugging
+
+Debugging Maxima code in notebook cells and loaded `.mac` files.
+
+## Overview
+
+Maxima supports breakpoints inside function bodies (and nowhere else). The
+existing DAP integration (`maxima-dap`) provides breakpoints, stepping,
+variable inspection, and a debug console for `.mac` files.
+
+Notebook debugging extends this to notebook cells by writing cell code to a
+temporary `.mac` file and launching `maxima-dap` against it. This gives users
+the full DAP experience (breakpoints, step over/into, variables panel, call
+stack) for functions defined in notebook cells and in files loaded via
+`load()`.
+
+## Architecture
+
+```
+Notebook cells                    External .mac files
+┌──────────────┐                 ┌──────────────────┐
+│ Cell 1: f(x) │                 │ mylib.mac        │
+│ Cell 2: g(x) │                 │  h(x) := ...     │
+│ Cell 3: g(5) │                 │  k(x) := ...     │
+└──────┬───────┘                 └──────────────────┘
+       │                                   │
+       ▼                                   │
+  Write to temp file                       │
+  __maxima_notebook_debug.mac              │
+  ┌────────────────────────────┐           │
+  │ /* Cell 1 */               │           │
+  │ f(x) := block([y],        │           │
+  │   y: x^2,                 │           │
+  │   y + 1                   │           │
+  │ );                         │           │
+  │ /* Cell 2 */               │           │
+  │ g(x) := f(x) * 2;         │           │
+  │ /* Cell 3 */               │           │
+  │ load("mylib.mac");  ───────┼───────────┘
+  │ g(5);                      │
+  └────────────┬───────────────┘
+               │
+               ▼
+         maxima-dap
+         (spawns fresh Maxima)
+         - batchloads temp file
+         - sets breakpoints in functions
+         - loads mylib.mac (via load() in temp file)
+         - breakpoints in mylib.mac work
+               │
+               ▼
+         VS Code Debug UI
+         - Breakpoints panel
+         - Variables panel
+         - Call stack
+         - Debug console
+```
+
+## Commands
+
+### Debug Notebook
+
+**Command:** `maxima.notebook.debugNotebook`
+**Location:** Notebook toolbar button
+**Keyboard:** None (toolbar only)
+
+Writes ALL code cells to a temp file and launches a debug session.
+
+1. Get all code cells from the active notebook in order
+2. Concatenate source code into `__maxima_notebook_debug.mac`
+3. Insert cell markers as comments: `/* Cell N (line M) */`
+4. Track line offset mapping: cell index → start line in temp file
+5. Launch debug: `vscode.debug.startDebugging(folder, config)`
+   ```json
+   {
+     "type": "maxima",
+     "request": "launch",
+     "name": "Debug Notebook",
+     "program": "/tmp/__maxima_notebook_debug.mac",
+     "stopOnEntry": false
+   }
+   ```
+
+### Debug From Cell
+
+**Command:** `maxima.notebook.debugFromCell`
+**Location:** Cell title context menu
+**Use case:** Debug a specific section without running the whole notebook
+
+Same as Debug Notebook but only includes cells from the beginning up to and
+including the selected cell. Useful when a notebook has many cells and the
+user only wants to debug a function defined early on.
+
+## Temp File Format
+
+The generated temp file looks like:
+
+```maxima
+/* === Maxima Notebook Debug === */
+/* Generated from: MyNotebook.ipynb */
+
+/* Cell 1 (line 4) */
+f(x) := block([y],
+  y: x^2,
+  y + 1
+);
+
+/* Cell 2 (line 10) */
+g(x) := f(x) * 2;
+
+/* Cell 3 (line 13) */
+load("mylib.mac");
+g(5);
+```
+
+Cell markers include the cell index and the starting line number for
+debugging reference.
+
+## What Works
+
+### Breakpoints in Function Definitions
+
+Maxima supports breakpoints inside `block()` bodies. Users set breakpoints
+in the temp file (or in loaded `.mac` files) on lines inside function
+definitions.
+
+```maxima
+f(x) := block([y],
+  y: x^2,         /* ← breakpoint here */
+  y + 1
+);
+```
+
+When `f()` is called, execution stops at the breakpoint. The user sees:
+- **Variables panel:** Function arguments (`x`) and block locals (`y`)
+- **Call stack:** Frame showing `f(x)` with the source location
+- **Debug console:** Evaluate expressions at the breakpoint
+
+### Breakpoints in Loaded Files
+
+If a notebook cell does `load("mylib.mac")`, any functions in `mylib.mac`
+are loaded into the Maxima session. Users set breakpoints in `mylib.mac`
+directly (it's a regular `.mac` file), and those breakpoints fire when the
+functions are called from the temp file.
+
+### Stepping
+
+| Action | Shortcut | Description |
+|--------|----------|-------------|
+| Continue | F5 | Run to next breakpoint |
+| Step Over | F10 | Execute current statement, skip function bodies |
+| Step Into | F11 | Enter function calls |
+
+Step Out is not supported (Maxima debugger limitation).
+
+### Debug Console
+
+The debug console allows evaluating expressions at the current breakpoint.
+This uses maxima-dap's evaluate handler, which runs expressions in the
+Maxima debugger context.
+
+## Limitations
+
+### Separate Maxima Process
+
+The debug session spawns a fresh Maxima process via `maxima-dap`. This is
+**not** the notebook's evaluation session (which runs in aximar-mcp).
+
+Implications:
+- All function definitions from cells are re-executed (they're in the
+  temp file), so functions are available
+- `load()` calls in cells are re-executed, so loaded files are available
+- Interactive state (variables set by previous cell runs in the notebook)
+  is NOT available — the debug Maxima starts fresh
+- This is acceptable because debugging is about stepping through function
+  logic, not reproducing interactive session state
+
+### Breakpoint Locations
+
+Maxima only supports breakpoints inside function `block()` bodies. You
+cannot set breakpoints on:
+- Top-level statements (outside functions)
+- `load()` calls themselves
+- Inside `if`/`for` constructs that aren't in a `block()`
+
+maxima-dap handles this gracefully — breakpoints on unsupported lines are
+marked as "unverified."
+
+### Source Mapping
+
+For the initial implementation, the debug session shows the temp file. The
+user sees the same code as in their notebook cells, just concatenated into
+one file with cell markers.
+
+**Future improvement:** Use `vscode.debug.registerDebugAdapterTrackerFactory`
+to intercept DAP messages and translate source locations from temp file
+lines back to notebook cell URIs. This would allow breakpoints to appear
+inline in the notebook cell view rather than in the temp file.
+
+## AI Debug Tools
+
+AI agents can inspect the debug session via LM tools registered with
+`vscode.lm.registerTool()`.
+
+### `maxima_debug_variables`
+
+Returns variables from the current stack frame.
+
+**Implementation:**
+```typescript
+async invoke(options, token) {
+  const session = vscode.debug.activeDebugSession;
+  if (!session || session.type !== "maxima") {
+    return new LanguageModelToolResult([
+      new LanguageModelTextPart("No active Maxima debug session")
+    ]);
+  }
+
+  // Get top stack frame
+  const stack = await session.customRequest("stackTrace", { threadId: 1 });
+  const topFrame = stack.stackFrames[0];
+
+  // Get scopes (locals, arguments)
+  const scopes = await session.customRequest("scopes", {
+    frameId: topFrame.id
+  });
+
+  // Get variables for each scope
+  const results = [];
+  for (const scope of scopes.scopes) {
+    const vars = await session.customRequest("variables", {
+      variablesReference: scope.variablesReference
+    });
+    results.push({ scope: scope.name, variables: vars.variables });
+  }
+
+  return new LanguageModelToolResult([
+    new LanguageModelTextPart(JSON.stringify(results))
+  ]);
+}
+```
+
+### `maxima_debug_evaluate`
+
+Evaluates an expression in the current debug context.
+
+**Input:** `{ expression: string }`
+
+**Implementation:**
+```typescript
+const result = await session.customRequest("evaluate", {
+  expression: options.input.expression,
+  context: "repl",
+  frameId: topFrame.id
+});
+return new LanguageModelToolResult([
+  new LanguageModelTextPart(result.result)
+]);
+```
+
+### `maxima_debug_callstack`
+
+Returns the current call stack with frame information.
+
+**Implementation:**
+```typescript
+const stack = await session.customRequest("stackTrace", { threadId: 1 });
+return new LanguageModelToolResult([
+  new LanguageModelTextPart(JSON.stringify(stack.stackFrames.map(f => ({
+    name: f.name,
+    source: f.source?.path,
+    line: f.line
+  }))))
+]);
+```
+
+## Example Debug Workflow
+
+1. User has a notebook with:
+   - Cell 1: `f(x) := block([y], y: x^2, y + 1);`
+   - Cell 2: `g(x) := f(x) * 2;`
+   - Cell 3: `g(5);`
+2. User opens the temp file (or sets breakpoints before running Debug)
+3. User sets a breakpoint inside `f` at `y: x^2`
+4. User clicks "Debug Notebook" in the toolbar
+5. maxima-dap loads the temp file, calls `g(5)` which calls `f(5)`
+6. Execution stops at the breakpoint
+7. Variables panel shows: `x = 5`, `y = (not yet assigned)`
+8. User steps over → `y = 25`
+9. User steps over → function returns `26`
+10. User continues → `g(5)` returns `52`
+11. Debug session ends
+
+With AI assistance:
+- AI calls `maxima_debug_variables` → `[{scope: "Arguments", variables: [{name: "x", value: "5"}]}, {scope: "Locals", variables: [{name: "y", value: "25"}]}]`
+- AI calls `maxima_debug_evaluate("y^2")` → `"625"`
+- AI explains: "The function computes x^2 + 1. With x=5, y=25, result is 26."
