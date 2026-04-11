@@ -40,6 +40,7 @@ function renderLatex(latex: string, element: HTMLElement): void {
   try {
     katex.render(preprocessLatex(latex), element, {
       displayMode: true,
+      fleqn: true,
       throwOnError: false,
       trust: true,
       output: "htmlAndMathml",

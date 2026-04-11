@@ -17,7 +17,8 @@
   },
   "main": "./out/extension.js",
   "activationEvents": [
-    "onNotebook:maxima-notebook"
+    "onNotebook:maxima-notebook",
+    "onNotebook:maxima-notebook-compat"
   ],
   "scripts": {
     "compile": "node esbuild.mjs",
@@ -55,7 +56,7 @@
         "priority": "default"
       },
       {
-        "type": "maxima-notebook",
+        "type": "maxima-notebook-compat",
         "displayName": "Maxima Notebook",
         "selector": [
           {
@@ -135,7 +136,7 @@
       "notebook/toolbar": [
         {
           "command": "maxima.notebook.restartKernel",
-          "when": "notebookType == 'maxima-notebook'",
+          "when": "notebookType == 'maxima-notebook' || notebookType == 'maxima-notebook-compat'",
           "group": "navigation"
         }
       ],

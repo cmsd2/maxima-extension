@@ -11,24 +11,55 @@ import type { EvalResult, LabelContext, MaximaCellMetadata } from "./types";
 import { rewriteLabels } from "./labels";
 
 export const NOTEBOOK_TYPE = "maxima-notebook";
+/** Compat type registered with "option" priority for .ipynb files. */
+export const NOTEBOOK_TYPE_COMPAT = "maxima-notebook-compat";
+
+/** Per-notebook execution state. */
+interface NotebookState {
+  executionOrder: number;
+  labelMap: Map<number, string>;
+}
+
+/** Session entry with generation tracking for stale session detection. */
+interface SessionEntry {
+  sessionId: string;
+  generation: number;
+}
 
 export class NotebookController {
-  private controller: vscode.NotebookController;
-  private executionOrder = 0;
-  /** Maps display execution count → real Maxima output label */
-  private labelMap = new Map<number, string>();
-  /** Maps notebook URI → aximar-mcp session ID */
-  private sessionMap = new Map<string, string>();
+  private controllers: vscode.NotebookController[];
+  /** Per-notebook execution state keyed by notebook URI. */
+  private notebookState = new Map<string, NotebookState>();
+  /** Maps notebook URI → aximar-mcp session entry. */
+  private sessionMap = new Map<string, SessionEntry>();
 
   constructor(private mcpManager: McpProcessManager) {
-    this.controller = vscode.notebooks.createNotebookController(
-      "maxima-kernel",
-      NOTEBOOK_TYPE,
-      "Maxima",
+    const handler = this.executeCells.bind(this);
+    this.controllers = [NOTEBOOK_TYPE, NOTEBOOK_TYPE_COMPAT].map(
+      (type, i) => {
+        const ctrl = vscode.notebooks.createNotebookController(
+          i === 0 ? "maxima-kernel" : "maxima-kernel-compat",
+          type,
+          "Maxima",
+        );
+        ctrl.supportedLanguages = ["maxima"];
+        ctrl.supportsExecutionOrder = true;
+        ctrl.executeHandler = handler;
+        return ctrl;
+      },
     );
-    this.controller.supportedLanguages = ["maxima"];
-    this.controller.supportsExecutionOrder = true;
-    this.controller.executeHandler = this.executeCells.bind(this);
+  }
+
+  // ── Per-notebook state ─────────────────────────────────────────────
+
+  private getState(notebook: vscode.NotebookDocument): NotebookState {
+    const uri = notebook.uri.toString();
+    let state = this.notebookState.get(uri);
+    if (!state) {
+      state = { executionOrder: 0, labelMap: new Map() };
+      this.notebookState.set(uri, state);
+    }
+    return state;
   }
 
   // ── Cell execution ─────────────────────────────────────────────────
@@ -36,20 +67,22 @@ export class NotebookController {
   private async executeCells(
     cells: vscode.NotebookCell[],
     notebook: vscode.NotebookDocument,
-    _controller: vscode.NotebookController,
+    controller: vscode.NotebookController,
   ): Promise<void> {
     // Execute cells sequentially to maintain session state order
     for (const cell of cells) {
-      await this.executeCell(cell, notebook);
+      await this.executeCell(cell, notebook, controller);
     }
   }
 
   private async executeCell(
     cell: vscode.NotebookCell,
     notebook: vscode.NotebookDocument,
+    controller: vscode.NotebookController,
   ): Promise<void> {
-    const execution = this.controller.createNotebookCellExecution(cell);
-    execution.executionOrder = ++this.executionOrder;
+    const state = this.getState(notebook);
+    const execution = controller.createNotebookCellExecution(cell);
+    execution.executionOrder = ++state.executionOrder;
     execution.start(Date.now());
 
     try {
@@ -57,29 +90,35 @@ export class NotebookController {
       const sessionId = await this.ensureSession(notebook);
 
       // Build label context
-      const ctx = this.buildLabelContext(cell, notebook);
+      const ctx = this.buildLabelContext(cell, notebook, state);
 
       // Rewrite labels in the source
       const source = cell.document.getText();
       const rewritten = rewriteLabels(source, ctx);
 
-      // Evaluate
-      const evalResult = await this.mcpManager.evaluateExpression(
-        rewritten,
-        sessionId,
+      // Evaluate with timeout
+      const timeoutMs =
+        vscode.workspace
+          .getConfiguration("maxima.notebook")
+          .get<number>("evalTimeout", 60) * 1000;
+
+      const evalResult = await withTimeout(
+        this.mcpManager.evaluateExpression(rewritten, sessionId),
+        timeoutMs,
+        "Cell evaluation timed out",
       );
 
       // Record label mapping
       if (evalResult.output_label) {
-        this.labelMap.set(this.executionOrder, evalResult.output_label);
+        state.labelMap.set(state.executionOrder, evalResult.output_label);
       }
 
       // Store metadata on the cell
       const metadata: MaximaCellMetadata = {
         outputLabel: evalResult.output_label ?? undefined,
-        executionCount: this.executionOrder,
+        executionCount: state.executionOrder,
       };
-      execution.executionOrder = this.executionOrder;
+      execution.executionOrder = state.executionOrder;
 
       // Build output items
       const outputs = this.buildOutputs(evalResult);
@@ -104,6 +143,23 @@ export class NotebookController {
         ]),
       ]);
       execution.end(false, Date.now());
+
+      // Show notification for startup failures so the user can fix settings
+      if (
+        message.includes("Failed to spawn") ||
+        message.includes("Failed to connect")
+      ) {
+        const action = await vscode.window.showErrorMessage(
+          `Maxima notebook: ${message}`,
+          "Open Settings",
+        );
+        if (action === "Open Settings") {
+          vscode.commands.executeCommand(
+            "workbench.action.openSettings",
+            "maxima.notebook.mcpPath",
+          );
+        }
+      }
     }
   }
 
@@ -182,6 +238,7 @@ export class NotebookController {
   private buildLabelContext(
     cell: vscode.NotebookCell,
     notebook: vscode.NotebookDocument,
+    state: NotebookState,
   ): LabelContext {
     // Find the previous code cell's output label
     let previousOutputLabel: string | undefined;
@@ -195,7 +252,7 @@ export class NotebookController {
     }
 
     return {
-      labelMap: this.labelMap,
+      labelMap: state.labelMap,
       previousOutputLabel,
     };
   }
@@ -206,14 +263,18 @@ export class NotebookController {
     notebook: vscode.NotebookDocument,
   ): Promise<string> {
     const uri = notebook.uri.toString();
-    let sessionId = this.sessionMap.get(uri);
-    if (sessionId) {
-      return sessionId;
-    }
+    const entry = this.sessionMap.get(uri);
 
     await this.mcpManager.ensureRunning();
-    sessionId = await this.mcpManager.createSession();
-    this.sessionMap.set(uri, sessionId);
+
+    // If the MCP process restarted, the old session is stale
+    const currentGen = this.mcpManager.generation;
+    if (entry && entry.generation === currentGen) {
+      return entry.sessionId;
+    }
+
+    const sessionId = await this.mcpManager.createSession();
+    this.sessionMap.set(uri, { sessionId, generation: currentGen });
     return sessionId;
   }
 
@@ -221,13 +282,12 @@ export class NotebookController {
 
   async restartKernel(notebook: vscode.NotebookDocument): Promise<void> {
     const uri = notebook.uri.toString();
-    const sessionId = this.sessionMap.get(uri);
-    if (sessionId) {
-      await this.mcpManager.restartSession(sessionId);
+    const entry = this.sessionMap.get(uri);
+    if (entry) {
+      await this.mcpManager.restartSession(entry.sessionId);
     }
-    // Reset execution counters and label map
-    this.executionOrder = 0;
-    this.labelMap.clear();
+    // Reset only this notebook's execution state
+    this.notebookState.delete(uri);
   }
 
   async interruptKernel(_notebook: vscode.NotebookDocument): Promise<void> {
@@ -246,18 +306,37 @@ export class NotebookController {
 
   async onNotebookClose(notebook: vscode.NotebookDocument): Promise<void> {
     const uri = notebook.uri.toString();
-    const sessionId = this.sessionMap.get(uri);
-    if (sessionId) {
+    const entry = this.sessionMap.get(uri);
+    if (entry) {
       try {
-        await this.mcpManager.closeSession(sessionId);
+        await this.mcpManager.closeSession(entry.sessionId);
       } catch {
         // Ignore — process may already be dead
       }
       this.sessionMap.delete(uri);
     }
+    this.notebookState.delete(uri);
   }
 
   dispose(): void {
-    this.controller.dispose();
+    for (const ctrl of this.controllers) {
+      ctrl.dispose();
+    }
   }
+}
+
+// ── Utilities ───────────────────────────────────────────────────────
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
 }

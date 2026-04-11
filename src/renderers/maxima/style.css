@@ -8,11 +8,10 @@
 
 .maxima-latex-output .katex-display {
   margin: 0;
-  text-align: left;
 }
 
-.maxima-latex-output .katex-display > .katex {
-  text-align: left;
+.maxima-latex-output .katex-display.fleqn > .katex {
+  padding-left: 0;
 }
 
 /* Plotly output */

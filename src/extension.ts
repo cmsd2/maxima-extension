@@ -7,7 +7,11 @@ import {
 } from "vscode-languageclient/node";
 import { McpProcessManager } from "./notebook/mcpClient";
 import { MaximaNotebookSerializer } from "./notebook/serializer";
-import { NotebookController, NOTEBOOK_TYPE } from "./notebook/controller";
+import {
+  NotebookController,
+  NOTEBOOK_TYPE,
+  NOTEBOOK_TYPE_COMPAT,
+} from "./notebook/controller";
 
 let client: LanguageClient | undefined;
 let mcpManager: McpProcessManager | undefined;
@@ -103,24 +107,29 @@ export async function activate(
   mcpManager = new McpProcessManager(notebookOutput);
   notebookController = new NotebookController(mcpManager);
 
-  context.subscriptions.push(
-    vscode.workspace.registerNotebookSerializer(
-      NOTEBOOK_TYPE,
-      new MaximaNotebookSerializer(),
-      { transientOutputs: false },
-    ),
-  );
+  const notebookTypes = [NOTEBOOK_TYPE, NOTEBOOK_TYPE_COMPAT];
+  const serializer = new MaximaNotebookSerializer();
+  for (const type of notebookTypes) {
+    context.subscriptions.push(
+      vscode.workspace.registerNotebookSerializer(type, serializer, {
+        transientOutputs: false,
+      }),
+    );
+  }
+
+  const isMaximaNotebook = (notebook: vscode.NotebookDocument) =>
+    notebookTypes.includes(notebook.notebookType);
 
   context.subscriptions.push(
     vscode.workspace.onDidOpenNotebookDocument((notebook) => {
-      if (notebook.notebookType === NOTEBOOK_TYPE) {
+      if (isMaximaNotebook(notebook)) {
         notebookController?.onNotebookOpen(notebook);
       }
     }),
   );
   context.subscriptions.push(
     vscode.workspace.onDidCloseNotebookDocument((notebook) => {
-      if (notebook.notebookType === NOTEBOOK_TYPE) {
+      if (isMaximaNotebook(notebook)) {
         notebookController?.onNotebookClose(notebook);
       }
     }),
@@ -138,7 +147,7 @@ export async function activate(
   context.subscriptions.push(
     vscode.commands.registerCommand("maxima.notebook.restartKernel", () => {
       const notebook = vscode.window.activeNotebookEditor?.notebook;
-      if (notebook && notebook.notebookType === NOTEBOOK_TYPE) {
+      if (notebook && isMaximaNotebook(notebook)) {
         notebookController?.restartKernel(notebook);
       }
     }),
@@ -146,7 +155,7 @@ export async function activate(
   context.subscriptions.push(
     vscode.commands.registerCommand("maxima.notebook.interruptKernel", () => {
       const notebook = vscode.window.activeNotebookEditor?.notebook;
-      if (notebook && notebook.notebookType === NOTEBOOK_TYPE) {
+      if (notebook && isMaximaNotebook(notebook)) {
         notebookController?.interruptKernel(notebook);
       }
     }),

@@ -10,25 +10,24 @@ notebook in VS Code.
 | Component | File | Status |
 |-----------|------|--------|
 | Serializer | `src/notebook/serializer.ts` | Complete — ipynb read/write, MIME remapping |
-| Controller | `src/notebook/controller.ts` | Complete — emits custom MIME types for all output |
-| MCP client | `src/notebook/mcpClient.ts` | Complete — ephemeral port, bearer token auth |
+| Controller | `src/notebook/controller.ts` | Complete — per-notebook state, eval timeout, crash recovery |
+| MCP client | `src/notebook/mcpClient.ts` | Complete — ephemeral port, bearer token auth, generation tracking |
 | Labels | `src/notebook/labels.ts` | Complete — ported from aximar-core Rust |
 | Types | `src/notebook/types.ts` | Complete |
 | LSP in cells | `src/extension.ts` | Working — completions, hover, diagnostics |
 | SVG plots | controller | Working — native VS Code renderer |
 | Error output | controller | Working — native VS Code error banner |
-| KaTeX renderer | `src/renderers/maxima/index.ts` | Complete — LaTeX math rendering |
+| KaTeX renderer | `src/renderers/maxima/index.ts` | Complete — LaTeX math rendering (fleqn left-aligned) |
 | Plotly renderer | `src/renderers/maxima/index.ts` | Complete — interactive charts |
 | Text renderer | `src/renderers/maxima/index.ts` | Complete — styled text output |
 | .macnb support | `package.json` | Complete — default handler for .macnb files |
+| .ipynb support | `package.json` | Complete — "Open With" option via compat notebook type |
 | New File menu | `package.json` + `extension.ts` | Complete — "Maxima Notebook" in File > New File |
 
 ### Known Bugs
 
-- `labelMap` and `executionOrder` are per-controller, not per-notebook —
-  two open notebooks share state and collide
 - `interruptHandler` not wired to VS Code's interrupt button — shows an
-  info message only
+  info message only (restart-based interrupt deferred — too destructive)
 
 ### Not Built
 
@@ -66,9 +65,10 @@ Custom notebook renderer with KaTeX, Plotly.js, and styled text output.
 - [x] Text output renderer — styled with editor font/colors
 - [x] esbuild config for browser-targeted renderer bundle
 - [x] Controller emits `application/x-maxima-latex` and `application/x-maxima-plotly`
-- [x] Left-aligned LaTeX output (KaTeX default centering overridden)
+- [x] Left-aligned LaTeX output via KaTeX `fleqn` option
 - [x] Clears previous content on re-render (prevents duplicate plots)
-- [x] .macnb registered as default notebook type (Jupyter gets .ipynb as option)
+- [x] .macnb registered as default notebook type
+- [x] .ipynb available via "Open With" (separate `maxima-notebook-compat` type)
 - [x] "Maxima Notebook" appears in File > New File menu
 
 **Result:** Full rich output rendering — typeset math, interactive charts,
@@ -76,47 +76,30 @@ styled text. Notebooks are usable for real math work.
 
 ---
 
-## Phase 3: Bug Fixes and Polish
+## Phase 3: Bug Fixes and Polish (DONE)
 
 Fix known issues and improve robustness.
 
-### 3a: Per-Notebook State
+### 3a: Per-Notebook State (DONE)
 
-Refactor controller to key `labelMap` and `executionOrder` by notebook URI.
+- [x] Replaced shared `executionOrder`/`labelMap` with per-notebook
+  `notebookState: Map<string, NotebookState>` keyed by notebook URI
+- [x] `restartKernel` clears only the target notebook's state
+- [x] `onNotebookClose` removes state for the closed notebook
 
-**Work:**
-- Replace single `labelMap: Map<number, string>` with
-  `notebookState: Map<string, { labelMap, executionOrder }>` keyed by
-  notebook URI
-- `restartKernel` clears only the target notebook's state
-- `onNotebookClose` removes state for the closed notebook
+### 3b: Interrupt Handler (DEFERRED)
 
-**Acceptance criteria:**
-- Two notebooks open simultaneously have independent execution counters
-- Restarting one notebook's kernel doesn't affect the other
-- Closing a notebook cleans up its state
+Restart-based interrupt is too destructive — kills all session state.
+Deferred until `aximar-mcp` supports a proper cancel signal.
 
-### 3b: Interrupt Handler
+### 3c: Error Handling Improvements (DONE)
 
-Wire up interrupt to actually stop execution.
-
-**Work:**
-- Set `controller.interruptHandler` in the constructor
-- Call `mcpManager.restartSession(sessionId)` (Maxima doesn't support
-  mid-evaluation interrupt — restart is the only option)
-- Cancel any pending `NotebookCellExecution` objects
-- VS Code's stop button in the cell toolbar will now work
-
-**Acceptance criteria:**
-- Clicking the stop button during a long computation restarts the session
-- Pending queued cells are cancelled
-- The notebook returns to an editable state
-
-### 3c: Error Handling Improvements
-
-- Show a notification if `aximar-mcp` fails to start (binary not found, etc.)
-- Retry logic if the MCP process crashes mid-session
-- Timeout on cell execution (use `maxima.notebook.evalTimeout` setting)
+- [x] Notification with "Open Settings" action if `aximar-mcp` fails to
+  start (binary not found, connection failure)
+- [x] Stale session recovery via generation counter on `McpProcessManager` —
+  after a crash and respawn, old session IDs are detected and replaced
+- [x] Cell evaluation timeout using `maxima.notebook.evalTimeout` setting
+  (default 60s)
 
 ---
 

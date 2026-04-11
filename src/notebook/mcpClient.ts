@@ -23,6 +23,7 @@ export class McpProcessManager {
   private port: number | undefined;
   private token: string | undefined;
   private _running = false;
+  private _generation = 0;
   private outputChannel: vscode.OutputChannel;
 
   constructor(outputChannel: vscode.OutputChannel) {
@@ -45,6 +46,11 @@ export class McpProcessManager {
 
   isRunning(): boolean {
     return this._running && this.process !== undefined && this.process.exitCode === null;
+  }
+
+  /** Monotonically increasing counter, incremented on each process spawn. */
+  get generation(): number {
+    return this._generation;
   }
 
   getPort(): number | undefined {
@@ -116,6 +122,7 @@ export class McpProcessManager {
   // ── Private ────────────────────────────────────────────────────────
 
   private async spawnAndConnect(): Promise<void> {
+    this._generation++;
     const args = ["--http", "--port", "0"];
 
     this.outputChannel.appendLine(
