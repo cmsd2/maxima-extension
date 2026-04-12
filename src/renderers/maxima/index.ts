@@ -43,7 +43,7 @@ function renderLatex(latex: string, element: HTMLElement): void {
       fleqn: true,
       throwOnError: false,
       trust: true,
-      output: "htmlAndMathml",
+      output: "html",
     });
   } catch {
     // Fallback: show raw TeX

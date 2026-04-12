@@ -73,11 +73,25 @@ export class McpProcessManager {
       args.session_id = sessionId;
     }
     const result = await this.callTool("evaluate_expression", args);
-    return JSON.parse(result) as EvalResult;
+    try {
+      return JSON.parse(result) as EvalResult;
+    } catch {
+      // The server returned a non-JSON response (e.g. a safety gate
+      // blocking dangerous functions like load/system).
+      return {
+        text_output: result,
+        is_error: true,
+        error: result,
+      } as EvalResult;
+    }
   }
 
-  async createSession(): Promise<string> {
-    const result = await this.callTool("create_session", {});
+  async createSession(path?: string): Promise<string> {
+    const args: Record<string, string> = {};
+    if (path) {
+      args.path = path;
+    }
+    const result = await this.callTool("create_session", args);
     // aximar-mcp returns the session_id as a plain string or JSON
     try {
       const parsed = JSON.parse(result);
@@ -135,7 +149,7 @@ export class McpProcessManager {
 
   private async spawnAndConnect(): Promise<void> {
     this._generation++;
-    const args = ["--http", "--port", "0"];
+    const args = ["--http", "--port", "0", "--allow-dangerous"];
 
     this.outputChannel.appendLine(
       `Spawning: ${this.mcpPath} ${args.join(" ")}`

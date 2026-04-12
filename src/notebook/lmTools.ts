@@ -46,6 +46,24 @@ const NO_NOTEBOOK_MSG =
   "No active Maxima notebook. Please open a .macnb or .ipynb file " +
   "with the Maxima kernel selected.";
 
+/** Functions that can access the filesystem or execute shell commands. */
+const DANGEROUS_FUNCTIONS = [
+  "system", "load", "batchload", "batch", "save", "writefile",
+  "closefile", "appendfile", "with_stdout", "stringout",
+];
+
+/** Return names of dangerous Maxima functions found in `source`. */
+function detectDangerousCalls(source: string): string[] {
+  const found: string[] = [];
+  for (const fn of DANGEROUS_FUNCTIONS) {
+    // Match function_name( allowing for whitespace
+    if (new RegExp(`\\b${fn}\\s*\\(`).test(source)) {
+      found.push(`${fn}()`);
+    }
+  }
+  return found;
+}
+
 interface CellOutputInfo {
   text: string | null;
   latex: string | null;
@@ -192,11 +210,33 @@ class RunCellTool implements vscode.LanguageModelTool<RunCellInput> {
     options: vscode.LanguageModelToolInvocationPrepareOptions<RunCellInput>,
     _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.PreparedToolInvocation> {
+    const notebook = getActiveMaximaNotebook();
+    const { cellIndex } = options.input;
+    const source =
+      notebook && cellIndex >= 0 && cellIndex < notebook.cellCount
+        ? notebook.cellAt(cellIndex).document.getText()
+        : undefined;
+
+    const dangerous = source ? detectDangerousCalls(source) : [];
+    if (dangerous.length > 0) {
+      const names = dangerous.join(", ");
+      return {
+        invocationMessage: `Running cell ${cellIndex}…`,
+        confirmationMessages: {
+          title: "Potentially Dangerous Code",
+          message: new vscode.MarkdownString(
+            `Cell ${cellIndex} uses **${names}** which can access the filesystem or run shell commands.\n\n` +
+              `\`\`\`maxima\n${source}\n\`\`\`\n\nAllow execution?`,
+          ),
+        },
+      };
+    }
+
     return {
-      invocationMessage: `Running cell ${options.input.cellIndex}…`,
+      invocationMessage: `Running cell ${cellIndex}…`,
       confirmationMessages: {
         title: "Run Notebook Cell",
-        message: `Execute cell ${options.input.cellIndex} in the active Maxima notebook?`,
+        message: `Execute cell ${cellIndex} in the active Maxima notebook?`,
       },
     };
   }
@@ -251,16 +291,31 @@ class AddCellTool implements vscode.LanguageModelTool<AddCellInput> {
     options: vscode.LanguageModelToolInvocationPrepareOptions<AddCellInput>,
     _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.PreparedToolInvocation> {
+    const { source } = options.input;
     const preview =
-      options.input.source.length > 60
-        ? options.input.source.substring(0, 60) + "…"
-        : options.input.source;
+      source.length > 60 ? source.substring(0, 60) + "…" : source;
+
+    const dangerous = detectDangerousCalls(source);
+    if (dangerous.length > 0) {
+      const names = dangerous.join(", ");
+      return {
+        invocationMessage: `Adding cell: ${preview}`,
+        confirmationMessages: {
+          title: "Potentially Dangerous Code",
+          message: new vscode.MarkdownString(
+            `This cell uses **${names}** which can access the filesystem or run shell commands.\n\n` +
+              `\`\`\`maxima\n${source}\n\`\`\`\n\nAdd this cell?`,
+          ),
+        },
+      };
+    }
+
     return {
       invocationMessage: `Adding cell: ${preview}`,
       confirmationMessages: {
         title: "Add Notebook Cell",
         message: new vscode.MarkdownString(
-          `Add a new Maxima code cell?\n\n\`\`\`maxima\n${options.input.source}\n\`\`\``,
+          `Add a new Maxima code cell?\n\n\`\`\`maxima\n${source}\n\`\`\``,
         ),
       },
     };

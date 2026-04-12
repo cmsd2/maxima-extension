@@ -5,6 +5,7 @@
  * session lifecycle via the McpProcessManager.
  */
 
+import * as path from "path";
 import * as vscode from "vscode";
 import type { McpProcessManager } from "./mcpClient";
 import type { EvalResult, LabelContext, MaximaCellMetadata } from "./types";
@@ -177,32 +178,28 @@ export class NotebookController {
 
     const outputs: vscode.NotebookCellOutput[] = [];
 
-    // Main result output (text and/or latex)
-    const items: vscode.NotebookCellOutputItem[] = [];
-
+    // Text output from print()/tex() side effects — shown as plain text
     if (result.text_output) {
-      items.push(
-        vscode.NotebookCellOutputItem.text(result.text_output, "text/plain"),
+      outputs.push(
+        new vscode.NotebookCellOutput([
+          vscode.NotebookCellOutputItem.text(
+            result.text_output,
+            "text/plain",
+          ),
+        ]),
       );
     }
 
+    // Final result as LaTeX (from injected tex(%))
     if (result.latex) {
-      items.push(
-        vscode.NotebookCellOutputItem.text(
-          result.latex,
-          "application/x-maxima-latex",
-        ),
+      outputs.push(
+        new vscode.NotebookCellOutput([
+          vscode.NotebookCellOutputItem.text(
+            result.latex,
+            "application/x-maxima-latex",
+          ),
+        ]),
       );
-      // Plain text fallback for environments without the renderer
-      if (!result.text_output) {
-        items.push(
-          vscode.NotebookCellOutputItem.text(result.latex, "text/plain"),
-        );
-      }
-    }
-
-    if (items.length > 0) {
-      outputs.push(new vscode.NotebookCellOutput(items));
     }
 
     // SVG plot — renders natively in VS Code
@@ -273,7 +270,10 @@ export class NotebookController {
       return entry.sessionId;
     }
 
-    const sessionId = await this.mcpManager.createSession();
+    const notebookDir = notebook.isUntitled
+      ? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      : path.dirname(notebook.uri.fsPath);
+    const sessionId = await this.mcpManager.createSession(notebookDir);
     this.sessionMap.set(uri, { sessionId, generation: currentGen });
     return sessionId;
   }

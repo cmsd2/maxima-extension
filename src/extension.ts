@@ -13,6 +13,12 @@ import {
   NOTEBOOK_TYPE_COMPAT,
 } from "./notebook/controller";
 import { registerLmTools } from "./notebook/lmTools";
+import {
+  debugNotebook,
+  debugFromCell,
+  registerDebugLmTools,
+  registerDebugAdapterTracker,
+} from "./notebook/debug";
 
 let client: LanguageClient | undefined;
 let mcpManager: McpProcessManager | undefined;
@@ -56,6 +62,7 @@ export async function activate(
       new MaximaDebugConfigurationProvider(),
     ),
   );
+  context.subscriptions.push(registerDebugAdapterTracker());
 
   // --- Protocol output channel ---
   // maxima-dap sends filtered-out internal output (sentinels, prompts,
@@ -86,6 +93,9 @@ export async function activate(
 
   // Register LM tools for AI agents
   for (const d of registerLmTools(notebookController)) {
+    context.subscriptions.push(d);
+  }
+  for (const d of registerDebugLmTools()) {
     context.subscriptions.push(d);
   }
 
@@ -141,6 +151,20 @@ export async function activate(
         notebookController?.interruptKernel(notebook);
       }
     }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("maxima.notebook.debugNotebook", () => {
+      debugNotebook();
+    }),
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "maxima.notebook.debugFromCell",
+      (cell: vscode.NotebookCell) => {
+        debugFromCell(cell);
+      },
+    ),
   );
 
   // --- MCP server provider ---

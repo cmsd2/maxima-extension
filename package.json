@@ -108,6 +108,16 @@
         "command": "maxima.notebook.new",
         "title": "Maxima Notebook",
         "shortTitle": "Maxima Notebook"
+      },
+      {
+        "command": "maxima.notebook.debugNotebook",
+        "title": "Maxima: Debug Notebook",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "maxima.notebook.debugFromCell",
+        "title": "Maxima: Debug From This Cell",
+        "icon": "$(debug-alt)"
       }
     ],
     "menus": {
@@ -130,6 +140,18 @@
           "command": "maxima.notebook.restartKernel",
           "when": "notebookType == 'maxima-notebook' || notebookType == 'maxima-notebook-compat'",
           "group": "navigation"
+        },
+        {
+          "command": "maxima.notebook.debugNotebook",
+          "when": "notebookType == 'maxima-notebook' || notebookType == 'maxima-notebook-compat'",
+          "group": "navigation"
+        }
+      ],
+      "notebook/cell/title": [
+        {
+          "command": "maxima.notebook.debugFromCell",
+          "when": "notebookType == 'maxima-notebook' || notebookType == 'maxima-notebook-compat'",
+          "group": "2_debug"
         }
       ],
       "file/newFile": [
@@ -142,6 +164,14 @@
         {
           "command": "maxima.runFile",
           "when": "editorLangId == maxima"
+        },
+        {
+          "command": "maxima.notebook.debugNotebook",
+          "when": "notebookType == 'maxima-notebook' || notebookType == 'maxima-notebook-compat'"
+        },
+        {
+          "command": "maxima.notebook.debugFromCell",
+          "when": "notebookType == 'maxima-notebook' || notebookType == 'maxima-notebook-compat'"
         }
       ]
     },
@@ -244,6 +274,42 @@
           "required": ["source"],
           "additionalProperties": false
         }
+      },
+      {
+        "name": "maxima_debug_variables",
+        "displayName": "Get Debug Variables",
+        "modelDescription": "Get variables from the current stack frame of an active Maxima debug session. Returns scope names (Arguments, Locals) with variable names, values, and types. Only works when execution is paused at a breakpoint.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "maxima_debug_evaluate",
+        "displayName": "Evaluate Debug Expression",
+        "modelDescription": "Evaluate a Maxima expression in the context of the current debug breakpoint. The expression is evaluated in the Maxima debugger's REPL context with access to local variables and arguments. Only works when execution is paused at a breakpoint.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "expression": {
+              "type": "string",
+              "description": "Maxima expression to evaluate at the current breakpoint"
+            }
+          },
+          "required": ["expression"],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "maxima_debug_callstack",
+        "displayName": "Get Debug Call Stack",
+        "modelDescription": "Get the current call stack from an active Maxima debug session. Returns frame names, source file paths, and line numbers. Only works when execution is paused at a breakpoint.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
       }
     ],
     "mcpServerDefinitionProviders": [
@@ -289,6 +355,11 @@
                 "type": "string",
                 "description": "Path to the maxima binary. Overrides maxima.maximaPath setting.",
                 "default": ""
+              },
+              "evalTimeout": {
+                "type": "number",
+                "description": "Evaluation timeout in seconds. If an expression takes longer, Maxima is interrupted. Set to 0 to disable. Default: 60.",
+                "default": 60
               }
             }
           }

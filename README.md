@@ -47,6 +47,17 @@ When the `maxima-dap` binary is installed, the extension provides interactive de
 
 Requires Maxima with the **SBCL** Lisp backend. See the [maxima-dap documentation](https://github.com/cmsd2/aximar/blob/master/docs/maxima-dap.md) for details and known limitations.
 
+#### Notebook Debugging
+
+Notebooks can also be debugged. The extension writes all code cells to a temporary `.mac` file and launches `maxima-dap` against it:
+
+- **Debug Notebook** — Toolbar button that debugs all cells in order
+- **Debug From Cell** — Context menu on a cell to debug from the beginning up to that cell
+- **Source mapping** — Breakpoints set in notebook cells are remapped to the temp file and back, so the debug UI shows locations within the original cells
+- **Working directory** — The notebook's directory is set as `cwd`, so `load()` and `batchload()` with relative paths work correctly
+
+Note: the debug session runs in a fresh Maxima process (not the notebook's evaluation session), so interactive state from previous cell runs is not available. All function definitions and `load()` calls from cells are re-executed.
+
 ### Notebooks
 
 Interactive Maxima notebooks with rich output rendering. Create `.macnb` files or open `.ipynb` files with the Maxima kernel.
