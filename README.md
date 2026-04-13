@@ -4,7 +4,11 @@ VS Code extension for [Maxima](https://maxima.sourceforge.io/), a computer algeb
 
 ## Features
 
-### Syntax Highlighting
+The extension has two layers: **built-in features** that work immediately with no extra binaries, and **language tool features** powered by optional Rust binaries from the [aximar](https://github.com/cmsd2/aximar) repository. The extension can auto-download the tools on first use — see [Installation](#installation).
+
+### Built-in (no extra binaries needed)
+
+#### Syntax Highlighting
 
 Full TextMate grammar for Maxima `.mac`, `.max`, and `.wxm` files:
 
@@ -17,7 +21,22 @@ Full TextMate grammar for Maxima `.mac`, `.max`, and `.wxm` files:
 - String literals with escape sequences
 - `:lisp` escape lines
 
-### Language Server (maxima-lsp)
+#### Editor Support
+
+- **Bracket matching** and auto-closing for `()`, `[]`, `{}`, `""`
+- **Block comment toggling** (`/* */`)
+- **Auto-indentation** after `block(`, `if`, `for`, `while`, `lambda`, etc.
+- **Block comment continuation** — pressing Enter inside `/* */` adds ` * ` prefix
+
+#### Run File
+
+Run the current `.mac` file in a terminal via the command palette ("Maxima: Run File"), the editor context menu, or the play button in the editor title bar. Requires Maxima to be installed and on your PATH.
+
+### Language tools (requires aximar binaries)
+
+These features require the Rust binaries from the [aximar](https://github.com/cmsd2/aximar) repository. The extension will prompt to download them automatically if they're not found.
+
+#### Language Server (maxima-lsp)
 
 When the `maxima-lsp` binary is installed, the extension provides:
 
@@ -33,7 +52,7 @@ When the `maxima-lsp` binary is installed, the extension provides:
 
 All language server features work offline — no running Maxima process is needed.
 
-### Debugger (maxima-dap)
+#### Debugger (maxima-dap)
 
 When the `maxima-dap` binary is installed, the extension provides interactive debugging of `.mac` files:
 
@@ -47,7 +66,7 @@ When the `maxima-dap` binary is installed, the extension provides interactive de
 
 Requires Maxima with the **SBCL** Lisp backend. See the [maxima-dap documentation](https://github.com/cmsd2/aximar/blob/master/docs/maxima-dap.md) for details and known limitations.
 
-#### Notebook Debugging
+##### Notebook Debugging
 
 Notebooks can also be debugged. The extension writes all code cells to a temporary `.mac` file and launches `maxima-dap` against it:
 
@@ -58,7 +77,7 @@ Notebooks can also be debugged. The extension writes all code cells to a tempora
 
 Note: the debug session runs in a fresh Maxima process (not the notebook's evaluation session), so interactive state from previous cell runs is not available. All function definitions and `load()` calls from cells are re-executed.
 
-### Notebooks
+#### Notebooks
 
 Interactive Maxima notebooks with rich output rendering. Create `.macnb` files or open `.ipynb` files with the Maxima kernel.
 
@@ -73,7 +92,7 @@ Interactive Maxima notebooks with rich output rendering. Create `.macnb` files o
 
 Requires the `aximar-mcp` binary. The extension spawns and manages the process automatically, using an ephemeral port with bearer token authentication.
 
-### AI Integration
+#### AI Integration
 
 AI agents (Copilot, Claude, etc.) can read and manipulate notebooks via Language Model tools:
 
@@ -83,13 +102,9 @@ AI agents (Copilot, Claude, etc.) can read and manipulate notebooks via Language
 
 The extension also auto-registers the managed `aximar-mcp` process as an MCP server, so AI agents can call `evaluate_expression` directly in the same Maxima session as the notebook. No manual configuration needed — just open a notebook.
 
-### Run File
-
-Run the current `.mac` file in a terminal via the command palette ("Maxima: Run File"), the editor context menu, or the play button in the editor title bar. Requires Maxima to be installed and on your PATH.
-
 ## Installation
 
-### From source
+### Extension
 
 ```sh
 git clone https://github.com/yshl/maxima-extension.git
@@ -102,49 +117,37 @@ Then either:
 - Open the folder in VS Code and press F5 to launch an Extension Development Host
 - Or copy the folder to `~/.vscode/extensions/` and restart VS Code
 
-### Installing maxima-lsp
+### Language tools (maxima-lsp, maxima-dap, aximar-mcp)
 
-The language server is optional but recommended. Without it, you still get syntax highlighting and the Run File command.
+The three Rust binaries are optional but recommended. Without them, you still get syntax highlighting, editor support, and the Run File command. Each tool adds more features:
 
-Build from the [Aximar](https://github.com/cmsd2/aximar) repository:
+| Tool | Enables |
+|------|---------|
+| `maxima-lsp` | Completions, hover, go-to-definition, diagnostics, etc. |
+| `maxima-dap` | Interactive debugging with breakpoints and variable inspection |
+| `aximar-mcp` | Notebook cell execution and AI integration |
 
-```sh
-git clone https://github.com/cmsd2/aximar.git
-cd aximar
-cargo install --path crates/maxima-lsp
-```
+#### Auto-download (recommended)
 
-This puts `maxima-lsp` on your PATH. The extension will find it automatically.
+On first activation, the extension checks for the tools and offers to download pre-built binaries from [GitHub Releases](https://github.com/cmsd2/aximar/releases). You can also trigger this any time from the command palette: **Maxima: Download/Update Tools**.
 
-### Installing maxima-dap
+The extension checks for updates once every 24 hours.
 
-The debug adapter is optional. Without it, you still get syntax highlighting, language server features, and the Run File command.
+#### Manual: cargo install
 
-Build from the [Aximar](https://github.com/cmsd2/aximar) repository:
-
-```sh
-# If you already cloned aximar for maxima-lsp:
-cd aximar
-cargo install --path crates/maxima-dap
-```
-
-This puts `maxima-dap` on your PATH. The extension will find it automatically.
-
-You also need Maxima installed with the SBCL backend (the default on most installations). To verify: `maxima --version` should show a version string, and `maxima --lisp=sbcl -q --batch-string="quit();"` should exit without errors.
-
-### Installing aximar-mcp
-
-The MCP server is required for notebook support. Without it, you still get syntax highlighting, language server features, debugging, and the Run File command.
-
-Build from the [Aximar](https://github.com/cmsd2/aximar) repository:
+If you have a Rust toolchain:
 
 ```sh
-# If you already cloned aximar for maxima-lsp:
-cd aximar
-cargo install --path crates/aximar-mcp
+cargo install --git https://github.com/cmsd2/aximar maxima-lsp maxima-dap aximar-mcp
 ```
 
-This puts `aximar-mcp` on your PATH. The extension spawns it automatically when you execute a notebook cell.
+#### Manual: set paths
+
+If you've placed the binaries in a non-standard location, point the extension at them via settings (`maxima.lsp.path`, `maxima.dap.path`, `maxima.notebook.mcpPath`).
+
+### Maxima
+
+Debugging and the Run File command require [Maxima](https://maxima.sourceforge.io/download.html) to be installed separately. The debugger requires the SBCL backend (the default on most installations).
 
 ## Configuration
 
@@ -163,9 +166,7 @@ Open VS Code settings (Ctrl+, or Cmd+,) and search for "maxima":
 
 - **VS Code** 1.99 or later
 - **Maxima** (for Run File and debugging) — [download](https://maxima.sourceforge.io/download.html)
-- **maxima-lsp** (optional, for language server features) — see installation above
-- **maxima-dap** (optional, for debugging) — requires Maxima with SBCL backend, see installation above
-- **aximar-mcp** (optional, for notebooks) — see installation above
+- **Language tools** (optional, auto-downloaded) — `maxima-lsp`, `maxima-dap`, `aximar-mcp` from the [aximar](https://github.com/cmsd2/aximar) repository
 
 ## License
 

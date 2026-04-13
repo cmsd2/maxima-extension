@@ -1,5 +1,28 @@
 # Contributing
 
+Thank you for your interest in contributing to the Maxima VS Code extension! This guide covers how to report issues, submit changes, and set up the project for local development.
+
+## Reporting Issues
+
+- Search [existing issues](https://github.com/cmsd2/maxima-extension/issues) before opening a new one.
+- Include the VS Code version, extension version, and OS.
+- For language server or debugger issues, include the relevant output channel logs (View > Output, then select "Maxima Language Server", "Maxima Protocol", or "Maxima Notebook" from the dropdown).
+- If the problem involves specific Maxima code, include a minimal reproducing example.
+
+## Submitting Changes
+
+1. Fork the repository and create a branch from `main`.
+2. Make your changes. Run `npm run lint` to type-check before committing.
+3. Write a clear commit message describing what changed and why.
+4. Open a pull request against `main`. Describe what the PR does and link any related issues.
+5. Keep PRs focused — one logical change per PR makes review easier.
+
+For larger changes (new features, architectural changes), please open an issue first to discuss the approach before investing significant effort.
+
+## Language Tools (Rust)
+
+The Rust binaries (`maxima-lsp`, `maxima-dap`, `aximar-mcp`) live in the separate [aximar](https://github.com/cmsd2/aximar) repository. If you know your issue or change relates to those tools, please file it there. If you're not sure which repo is responsible, filing it here is fine — we'll triage it to the right place.
+
 ## Project Structure
 
 ```
@@ -125,6 +148,13 @@ Edit `syntaxes/maxima.tmLanguage.json`. Test changes by pressing F5 and opening 
 
 1. Add the property under `contributes.configuration.properties` in `package.json`.
 2. Read it in `src/extension.ts` via `vscode.workspace.getConfiguration("maxima")`.
+
+## Code Style
+
+- TypeScript with strict mode enabled. Run `npm run lint` (`tsc --noEmit`) to check.
+- Use the existing code as a guide for formatting and naming conventions.
+- Prefer simple, readable code over clever abstractions.
+- No lint or formatting tool is enforced yet — just match the style of surrounding code.
 
 ## Packaging
 

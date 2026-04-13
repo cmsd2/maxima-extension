@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { execFileSync } from "child_process";
 import {
   LanguageClient,
   LanguageClientOptions,
@@ -19,14 +18,31 @@ import {
   registerDebugLmTools,
   registerDebugAdapterTracker,
 } from "./notebook/debug";
+import { BinaryManager } from "./binaryManager";
 
 let client: LanguageClient | undefined;
 let mcpManager: McpProcessManager | undefined;
 let notebookController: NotebookController | undefined;
+let binaryManager: BinaryManager | undefined;
 
 export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<void> {
+  // --- Binary manager ---
+  binaryManager = new BinaryManager(context.globalStorageUri);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("maxima.downloadTools", () => {
+      binaryManager?.downloadTools();
+    }),
+  );
+
+  // Non-blocking: check for Maxima and prompt to install missing tools
+  binaryManager.checkMaximaInstalled();
+  binaryManager.promptInstallIfNeeded();
+  // Non-blocking: check for updates after a short delay
+  setTimeout(() => binaryManager?.checkForUpdates(), 5000);
+
   // --- Run File command ---
   context.subscriptions.push(
     vscode.commands.registerCommand("maxima.runFile", () => {
@@ -52,7 +68,7 @@ export async function activate(
   );
 
   // --- Debug adapter ---
-  const dapFactory = new MaximaDapDescriptorFactory();
+  const dapFactory = new MaximaDapDescriptorFactory(binaryManager);
   context.subscriptions.push(
     vscode.debug.registerDebugAdapterDescriptorFactory("maxima", dapFactory),
   );
@@ -88,7 +104,9 @@ export async function activate(
   const notebookOutput = vscode.window.createOutputChannel("Maxima Notebook");
   context.subscriptions.push(notebookOutput);
 
-  mcpManager = new McpProcessManager(notebookOutput);
+  mcpManager = new McpProcessManager(notebookOutput, () =>
+    binaryManager?.resolveTool("aximar-mcp"),
+  );
   notebookController = new NotebookController(mcpManager);
 
   // Register LM tools for AI agents
@@ -217,16 +235,20 @@ export async function activate(
     return;
   }
 
-  const lspPath = config.get<string>("lsp.path", "").trim();
-  const command = lspPath || "maxima-lsp";
+  const command = binaryManager?.resolveTool("maxima-lsp");
+  if (!command) {
+    // No binary found anywhere — skip LSP silently (the install prompt
+    // from promptInstallIfNeeded() will guide the user)
+    return;
+  }
 
-  // Verify the binary exists if a custom path was given
-  if (lspPath) {
+  // Verify the binary exists if an absolute path was resolved
+  if (command.includes("/") || command.includes("\\")) {
     try {
-      await vscode.workspace.fs.stat(vscode.Uri.file(lspPath));
+      await vscode.workspace.fs.stat(vscode.Uri.file(command));
     } catch {
       const choice = await vscode.window.showWarningMessage(
-        `maxima-lsp binary not found at "${lspPath}". ` +
+        `maxima-lsp binary not found at "${command}". ` +
           "Language features are disabled.",
         "Open Settings",
       );
@@ -294,31 +316,22 @@ export async function deactivate(): Promise<void> {
 }
 
 /**
- * Check if a command is available on PATH.
- */
-function isCommandAvailable(command: string): boolean {
-  try {
-    const which = process.platform === "win32" ? "where" : "which";
-    execFileSync(which, [command], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Resolves the maxima-dap binary path and launches it as a stdio debug adapter.
  */
 class MaximaDapDescriptorFactory
   implements vscode.DebugAdapterDescriptorFactory
 {
+  private bm: BinaryManager | undefined;
+
+  constructor(bm: BinaryManager | undefined) {
+    this.bm = bm;
+  }
+
   createDebugAdapterDescriptor(
     _session: vscode.DebugSession,
     _executable: vscode.DebugAdapterExecutable | undefined,
   ): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
-    const config = vscode.workspace.getConfiguration("maxima");
-    const dapPath = config.get<string>("dap.path", "").trim();
-    const command = dapPath || "maxima-dap";
+    const command = this.bm?.resolveTool("maxima-dap") ?? "maxima-dap";
 
     return new vscode.DebugAdapterExecutable(command, [], {
       env: {
@@ -378,49 +391,29 @@ class MaximaDebugConfigurationProvider
     }
 
     // Validate that the maxima-dap binary can be found
-    const extConfig = vscode.workspace.getConfiguration("maxima");
-    const dapPath = extConfig.get<string>("dap.path", "").trim();
-    const dapCommand = dapPath || "maxima-dap";
-
-    if (dapPath) {
-      // Explicit path configured — check if the file exists
-      try {
-        await vscode.workspace.fs.stat(vscode.Uri.file(dapPath));
-      } catch {
-        const choice = await vscode.window.showErrorMessage(
-          `maxima-dap binary not found at "${dapPath}". ` +
-            "Please install maxima-dap or update the path in settings.",
-          "Open Settings",
+    const dapCommand = binaryManager?.resolveTool("maxima-dap");
+    if (!dapCommand) {
+      const choice = await vscode.window.showErrorMessage(
+        "maxima-dap was not found. " +
+          "Install Maxima tools or set the path in settings " +
+          "(Maxima > Dap: Path).",
+        "Download Tools",
+        "Open Settings",
+      );
+      if (choice === "Download Tools") {
+        vscode.commands.executeCommand("maxima.downloadTools");
+      } else if (choice === "Open Settings") {
+        vscode.commands.executeCommand(
+          "workbench.action.openSettings",
+          "maxima.dap.path",
         );
-        if (choice === "Open Settings") {
-          vscode.commands.executeCommand(
-            "workbench.action.openSettings",
-            "maxima.dap.path",
-          );
-        }
-        return undefined;
       }
-    } else {
-      // No explicit path — check if maxima-dap is on PATH
-      if (!isCommandAvailable(dapCommand)) {
-        const choice = await vscode.window.showErrorMessage(
-          `"${dapCommand}" was not found on PATH. ` +
-            "Install maxima-dap or set its path in settings " +
-            "(Maxima > Dap: Path).",
-          "Open Settings",
-        );
-        if (choice === "Open Settings") {
-          vscode.commands.executeCommand(
-            "workbench.action.openSettings",
-            "maxima.dap.path",
-          );
-        }
-        return undefined;
-      }
+      return undefined;
     }
 
     // Resolve maximaPath from launch config or extension settings
     if (!config.maximaPath) {
+      const extConfig = vscode.workspace.getConfiguration("maxima");
       const globalMaximaPath = extConfig.get<string>("maximaPath", "").trim();
       if (globalMaximaPath) {
         config.maximaPath = globalMaximaPath;

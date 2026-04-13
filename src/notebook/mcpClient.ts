@@ -25,16 +25,28 @@ export class McpProcessManager {
   private _running = false;
   private _generation = 0;
   private outputChannel: vscode.OutputChannel;
+  private resolvePath: (() => string | undefined) | undefined;
 
   private readonly _onDidChangeRunning = new vscode.EventEmitter<void>();
   readonly onDidChangeRunning: vscode.Event<void> =
     this._onDidChangeRunning.event;
 
-  constructor(outputChannel: vscode.OutputChannel) {
+  constructor(
+    outputChannel: vscode.OutputChannel,
+    resolvePath?: () => string | undefined,
+  ) {
     this.outputChannel = outputChannel;
+    this.resolvePath = resolvePath;
   }
 
   private get mcpPath(): string {
+    // Try the BinaryManager-resolved path first, fall back to setting / default
+    if (this.resolvePath) {
+      const resolved = this.resolvePath();
+      if (resolved) {
+        return resolved;
+      }
+    }
     const cfg = vscode.workspace.getConfiguration("maxima.notebook");
     return cfg.get<string>("mcpPath", "") || "aximar-mcp";
   }

@@ -35,6 +35,17 @@ interface CellLineMapping {
 let activeTempFile: string | undefined;
 let activeCellMappings: CellLineMapping[] | undefined;
 let sessionTerminationListener: vscode.Disposable | undefined;
+let activeNotebookUri: string | undefined;
+let activeUpToCellIndex: number | undefined;
+
+/** Lazily created output channel for notebook debug tracker diagnostics. */
+let debugTrackerOutput: vscode.OutputChannel | undefined;
+function trackerLog(msg: string): void {
+  if (!debugTrackerOutput) {
+    debugTrackerOutput = vscode.window.createOutputChannel("Maxima Notebook Debug Tracker");
+  }
+  debugTrackerOutput.appendLine(msg);
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -248,6 +259,10 @@ class NotebookDebugAdapterTracker implements vscode.DebugAdapterTracker {
    *  can always be rewritten even when the line has been snapped. */
   private breakpointIdToMapping = new Map<number, CellLineMapping>();
 
+  /** Maps DAP breakpoint ID → original cell-relative line (from setBreakpoints response).
+   *  Used as fallback when the resolved temp-file line falls outside the cell range. */
+  private breakpointIdToCellLine = new Map<number, number>();
+
   // ── Outgoing: VS Code → adapter ───────────────────────────────────
 
   onWillReceiveMessage(message: { type: string; command?: string; seq?: number; arguments?: any }): void {
@@ -256,7 +271,18 @@ class NotebookDebugAdapterTracker implements vscode.DebugAdapterTracker {
       message.command === "setBreakpoints" &&
       message.arguments?.source?.path
     ) {
-      this.rewriteSetBreakpointsRequest(message);
+      const sourcePath: string = message.arguments.source.path;
+      if (mappingForCellUri(sourcePath)) {
+        // Notebook cell that belongs to the session being debugged — rewrite.
+        this.rewriteSetBreakpointsRequest(message);
+      } else if (sourcePath.startsWith("vscode-notebook-cell:")) {
+        // Notebook cell from a DIFFERENT notebook (or a non-code cell).
+        // Clear the breakpoints so maxima-dap doesn't create junk entries
+        // that interfere with deferred-breakpoint matching.
+        trackerLog(`[setBreakpoints req] suppressing unrelated notebook cell: ${sourcePath}`);
+        message.arguments.breakpoints = [];
+        message.arguments.lines = [];
+      }
     }
   }
 
@@ -264,11 +290,13 @@ class NotebookDebugAdapterTracker implements vscode.DebugAdapterTracker {
     const sourcePath: string = message.arguments.source.path;
     const mapping = mappingForCellUri(sourcePath);
     if (!mapping || !activeTempFile) {
+      trackerLog(`[setBreakpoints req] no mapping for source path: ${sourcePath}`);
       return;
     }
 
     // Remember the original cell URI so we can reverse-map the response.
     this.pendingBreakpointRequests.set(message.seq, sourcePath);
+    trackerLog(`[setBreakpoints req] seq=${message.seq} cell=${sourcePath} → ${activeTempFile}`);
 
     // Rewrite source to the temp file.
     message.arguments.source.path = activeTempFile;
@@ -307,25 +335,33 @@ class NotebookDebugAdapterTracker implements vscode.DebugAdapterTracker {
   private rewriteSetBreakpointsResponse(message: any): void {
     const cellUri = this.pendingBreakpointRequests.get(message.request_seq);
     if (!cellUri) {
+      trackerLog(`[setBreakpoints resp] request_seq=${message.request_seq} — not a notebook request`);
       return; // Not a notebook-cell breakpoint we remapped.
     }
     this.pendingBreakpointRequests.delete(message.request_seq);
 
     const mapping = mappingForCellUri(cellUri);
     if (!mapping) {
+      trackerLog(`[setBreakpoints resp] no mapping for cellUri=${cellUri}`);
       return;
     }
 
     const breakpoints: DapBreakpoint[] | undefined =
       message.body?.breakpoints;
     if (!breakpoints) {
+      trackerLog(`[setBreakpoints resp] no breakpoints in body`);
       return;
     }
 
     for (const bp of breakpoints) {
+      trackerLog(
+        `[setBreakpoints resp] bp id=${bp.id} verified=${bp.verified} ` +
+        `line=${bp.line} source=${bp.source?.path} message=${bp.message ?? "(none)"}`,
+      );
       // Track breakpoint ID → cell mapping for future breakpoint events.
       if (typeof bp.id === "number") {
         this.breakpointIdToMapping.set(bp.id, mapping);
+        trackerLog(`[setBreakpoints resp]   tracked id=${bp.id} → cell ${mapping.cellIndex}`);
       }
       if (bp.source && bp.source.path === activeTempFile) {
         bp.source.path = cellUri;
@@ -333,6 +369,11 @@ class NotebookDebugAdapterTracker implements vscode.DebugAdapterTracker {
       }
       if (typeof bp.line === "number") {
         bp.line = tempLineToCell(mapping, bp.line);
+        // Store the cell-relative line so breakpoint events can fall back
+        // to it when Maxima resolves to a line outside the cell range.
+        if (typeof bp.id === "number") {
+          this.breakpointIdToCellLine.set(bp.id, bp.line);
+        }
       }
     }
   }
@@ -358,34 +399,73 @@ class NotebookDebugAdapterTracker implements vscode.DebugAdapterTracker {
 
   private rewriteBreakpointEvent(message: any): void {
     const bp: DapBreakpoint | undefined = message.body?.breakpoint;
-    if (!bp || bp.source?.path !== activeTempFile) {
+    if (!bp) {
       return;
     }
 
-    // Primary: look up by breakpoint ID (reliable even when line is snapped).
+    trackerLog(
+      `[breakpoint event] id=${bp.id} verified=${bp.verified} ` +
+      `line=${bp.line} source=${bp.source?.path} ` +
+      `activeTempFile=${activeTempFile}`,
+    );
+
+    // Primary: look up by breakpoint ID (reliable even when line is snapped
+    // or the source path has been normalised differently by the adapter).
     const idMapping = typeof bp.id === "number"
       ? this.breakpointIdToMapping.get(bp.id)
       : undefined;
 
-    // Fallback: look up by temp-file line number.
-    const lineMapping = typeof bp.line === "number"
-      ? mappingForTempLine(bp.line)
-      : undefined;
+    // Fallback: match by temp-file source path + line number.
+    const lineMapping =
+      !idMapping &&
+      bp.source?.path === activeTempFile &&
+      typeof bp.line === "number"
+        ? mappingForTempLine(bp.line)
+        : undefined;
 
     const mapping = idMapping ?? lineMapping;
-    if (mapping) {
-      bp.source!.path = mapping.cellUri;
-      bp.source!.name = `Cell ${mapping.cellIndex + 1}`;
-      if (typeof bp.line === "number") {
-        bp.line = tempLineToCell(mapping, bp.line);
+    if (!mapping) {
+      trackerLog(
+        `[breakpoint event] NO MAPPING — idMapping=${!!idMapping} ` +
+        `breakpointIdToMapping has ${this.breakpointIdToMapping.size} entries: ` +
+        `[${[...this.breakpointIdToMapping.keys()].join(", ")}]`,
+      );
+      return;
+    }
+
+    if (!bp.source) {
+      bp.source = {} as DapSource;
+    }
+    bp.source.path = mapping.cellUri;
+    bp.source.name = `Cell ${mapping.cellIndex + 1}`;
+    // Use the cell line we stored from the setBreakpoints response — it
+    // already has the correct cell-relative position (including any
+    // snapping that was reported at set time).
+    if (typeof bp.id === "number") {
+      const cellLine = this.breakpointIdToCellLine.get(bp.id);
+      if (cellLine !== undefined) {
+        bp.line = cellLine;
       }
     }
+    trackerLog(
+      `[breakpoint event] rewriting → cell ${mapping.cellIndex} line ${bp.line} ` +
+      `(matched by ${idMapping ? "id" : "line"})`,
+    );
   }
 }
 
 // ── Cleanup ──────────────────────────────────────────────────────────
 
-async function cleanupTempFile(): Promise<void> {
+/** Clear session listener, preserving temp file and state for restart. */
+function onSessionTerminated(): void {
+  if (sessionTerminationListener) {
+    sessionTerminationListener.dispose();
+    sessionTerminationListener = undefined;
+  }
+}
+
+/** Full cleanup: delete temp file and clear all state. */
+async function cleanupFull(): Promise<void> {
   if (activeTempFile) {
     try {
       await fs.unlink(activeTempFile);
@@ -395,9 +475,41 @@ async function cleanupTempFile(): Promise<void> {
     activeTempFile = undefined;
     activeCellMappings = undefined;
   }
-  if (sessionTerminationListener) {
-    sessionTerminationListener.dispose();
-    sessionTerminationListener = undefined;
+  activeNotebookUri = undefined;
+  activeUpToCellIndex = undefined;
+  onSessionTerminated();
+}
+
+/** Regenerate the temp file from the active notebook (e.g. on restart). */
+async function regenerateTempFile(): Promise<void> {
+  if (!activeNotebookUri) {
+    return;
+  }
+
+  const notebook = vscode.workspace.notebookDocuments.find(
+    (doc) => doc.uri.toString() === activeNotebookUri,
+  );
+  if (!notebook) {
+    trackerLog(`[restart] notebook not found: ${activeNotebookUri}`);
+    return;
+  }
+
+  try {
+    const { tempFilePath, mappings } = await generateTempFile(
+      notebook,
+      activeUpToCellIndex,
+    );
+    let resolvedPath = tempFilePath;
+    try {
+      resolvedPath = await fs.realpath(tempFilePath);
+    } catch {
+      // keep original
+    }
+    activeTempFile = resolvedPath;
+    activeCellMappings = mappings;
+    trackerLog(`[restart] regenerated temp file: ${activeTempFile}`);
+  } catch (err) {
+    trackerLog(`[restart] failed to regenerate: ${err}`);
   }
 }
 
@@ -408,11 +520,20 @@ async function launchDebugSession(
   sessionName: string,
   upToCellIndex?: number,
 ): Promise<void> {
+  // If there's stale state from a previous session, check if it's still running.
   if (activeTempFile) {
-    vscode.window.showWarningMessage(
-      "A notebook debug session is already active. Stop it before starting a new one.",
-    );
-    return;
+    const activeSession = vscode.debug.activeDebugSession;
+    if (
+      activeSession?.type === "maxima" &&
+      NOTEBOOK_DEBUG_NAMES.includes(activeSession.name)
+    ) {
+      vscode.window.showWarningMessage(
+        "A notebook debug session is already active. Stop it before starting a new one.",
+      );
+      return;
+    }
+    // Previous session ended — clean up stale state before fresh launch.
+    await cleanupFull();
   }
 
   let tempFilePath: string;
@@ -438,14 +559,16 @@ async function launchDebugSession(
 
   activeTempFile = tempFilePath;
   activeCellMappings = mappings;
+  activeNotebookUri = notebook.uri.toString();
+  activeUpToCellIndex = upToCellIndex;
 
   sessionTerminationListener = vscode.debug.onDidTerminateDebugSession(
-    async (session) => {
+    (session) => {
       if (
         session.type === "maxima" &&
         NOTEBOOK_DEBUG_NAMES.includes(session.name)
       ) {
-        await cleanupTempFile();
+        onSessionTerminated();
       }
     },
   );
@@ -468,7 +591,7 @@ async function launchDebugSession(
   const folder = vscode.workspace.workspaceFolders?.[0];
   const started = await vscode.debug.startDebugging(folder, config);
   if (!started) {
-    await cleanupTempFile();
+    await cleanupFull();
     vscode.window.showErrorMessage("Failed to start the debug session.");
   }
 }
@@ -513,7 +636,7 @@ export async function debugFromCell(
 // ── Tracker factory registration ─────────────────────────────────────
 
 export function registerDebugAdapterTracker(): vscode.Disposable {
-  return vscode.debug.registerDebugAdapterTrackerFactory("maxima", {
+  const trackerFactory = vscode.debug.registerDebugAdapterTrackerFactory("maxima", {
     createDebugAdapterTracker(session) {
       // Only attach the remapping tracker for notebook debug sessions.
       if (activeTempFile && NOTEBOOK_DEBUG_NAMES.includes(session.name)) {
@@ -522,6 +645,35 @@ export function registerDebugAdapterTracker(): vscode.Disposable {
       return undefined;
     },
   });
+
+  // On session start, handle restart: regenerate the temp file from the
+  // notebook (in case cells were edited) and re-register the termination
+  // listener for the new session.
+  const startListener = vscode.debug.onDidStartDebugSession(async (session) => {
+    if (
+      session.type === "maxima" &&
+      NOTEBOOK_DEBUG_NAMES.includes(session.name) &&
+      activeNotebookUri &&
+      activeTempFile &&
+      !sessionTerminationListener // No listener → previous session ended, this is a restart
+    ) {
+      trackerLog("[restart] detected restart, regenerating temp file");
+      await regenerateTempFile();
+
+      sessionTerminationListener = vscode.debug.onDidTerminateDebugSession(
+        (terminated) => {
+          if (
+            terminated.type === "maxima" &&
+            NOTEBOOK_DEBUG_NAMES.includes(terminated.name)
+          ) {
+            onSessionTerminated();
+          }
+        },
+      );
+    }
+  });
+
+  return vscode.Disposable.from(trackerFactory, startListener);
 }
 
 // ── AI Debug Tools ───────────────────────────────────────────────────
