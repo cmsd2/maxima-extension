@@ -32,6 +32,9 @@
   },
   "homepage": "https://github.com/yshl/maxima-extension#readme",
   "icon": "icon.png",
+  "extensionPack": [
+    "oijaz.unicode-latex"
+  ],
   "main": "./out/extension.js",
   "activationEvents": [
     "onNotebook:maxima-notebook",
@@ -248,7 +251,7 @@
       {
         "name": "maxima_notebook_get_cells",
         "displayName": "Get Maxima Notebook Cells",
-        "modelDescription": "Get all cells from the active Maxima notebook with their source code, cell type (code/markdown), execution order, and outputs including text, LaTeX math, plot indicators, and errors. Use this to understand what the user has in their notebook.",
+        "modelDescription": "Get all cells from the active Maxima notebook with their source code, cell type (code/markdown), execution order, and outputs including text, LaTeX math, plot indicators, and errors. Use this to understand what the user has in their notebook. Note: in Maxima the comma operator is `ev()` not a statement separator — `a, b` means `ev(a, b)`. Use $ or ; to separate statements.",
         "inputSchema": {
           "type": "object",
           "properties": {},
@@ -274,7 +277,7 @@
       {
         "name": "maxima_notebook_add_cell",
         "displayName": "Add Maxima Notebook Cell",
-        "modelDescription": "Add a new cell to the active Maxima notebook. Defaults to a code cell. Set kind to \"markdown\" for documentation/notes. The cell is added but not executed — use maxima_notebook_run_cell to execute code cells after adding.",
+        "modelDescription": "Add a new cell to the active Maxima notebook. Defaults to a code cell. Set kind to \"markdown\" for documentation/notes. The cell is added but not executed — use maxima_notebook_run_cell to execute code cells after adding. Maxima syntax tips: (1) Statements ending with `;` display their result (last one renders as LaTeX), `$` suppresses output. Use `print(expr)` for explicit text or `tex(expr)` for rendered LaTeX. (2) The comma operator is NOT a statement separator — `a, b` means `ev(a, b)`. To sequence expressions use separate statements with `$` or `;`, or a `block()`. (3) Prefer Unicode Greek letters (π, α, β, θ, etc.) over % forms (%pi, %alpha) — they are translated automatically. (4) For plots, prefer `plot2d`/`plot3d` over `draw2d`/`draw3d` — plot functions produce inline SVG visible in the notebook, while draw outputs to gnuplot and won't be captured. (5) For markdown cells: content is stored verbatim, use real newlines not \\n literals, and single backslashes for LaTeX (e.g. `\\sin`, `\\varphi`).",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -409,5 +412,14 @@
         ]
       }
     ]
+  },
+  "configurationDefaults": {
+    "[maxima]": {
+      "github.copilot.chat.codeGeneration.instructions": [
+        {
+          "text": "Maxima syntax rules: (1) Statements end with `;` (display result) or `$` (suppress output). In notebooks the last expression's result is automatically rendered as LaTeX, so you don't need `tex()` for that — use `print(expr)` only for intermediate output. (2) The comma operator is NOT a statement separator — `a, b` means `ev(a, b)`. To sequence expressions use separate statements with `$` or `;`, or wrap in `block()`. (3) Prefer Unicode Greek letters (π, α, β, θ) over %pi, %alpha etc. — they are translated automatically. (4) For plots, prefer `plot2d`/`plot3d` over `draw2d`/`draw3d` — plot functions produce inline SVG in notebooks, while draw outputs to gnuplot and won't be captured. (5) Assignment uses `:` not `=`. The `=` operator creates equations. (6) Function definition uses `:=` e.g. `f(x) := x^2;`."
+        }
+      ]
+    }
   }
 }

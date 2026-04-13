@@ -47,7 +47,7 @@ export function buildOutputs(result: EvalResult): vscode.NotebookCellOutput[] {
     outputs.push(
       new vscode.NotebookCellOutput([
         vscode.NotebookCellOutputItem.text(
-          result.plot_svg,
+          shrinkSvg(result.plot_svg),
           "image/svg+xml",
         ),
       ]),
@@ -68,6 +68,25 @@ export function buildOutputs(result: EvalResult): vscode.NotebookCellOutput[] {
   }
 
   return outputs;
+}
+
+/**
+ * Make an SVG responsive by replacing fixed width/height with a max-width
+ * style.  gnuplot emits e.g. `<svg width="600" height="480" ...>` which
+ * causes VS Code to allocate that exact space even when `set size` shrinks
+ * the plot inside the canvas.  By removing the fixed dimensions and relying
+ * on the viewBox, the SVG scales to fit its container without wasted space.
+ */
+function shrinkSvg(svg: string): string {
+  return svg.replace(
+    /(<svg\b[^>]*?)\s+width="(\d+)"\s+height="(\d+)"/,
+    (_match, prefix, w, h) => {
+      // Ensure a viewBox exists so the aspect ratio is preserved
+      const hasViewBox = /viewBox\s*=/.test(prefix);
+      const viewBox = hasViewBox ? "" : ` viewBox="0 0 ${w} ${h}"`;
+      return `${prefix}${viewBox} style="max-width:${w}px"`;
+    },
+  );
 }
 
 /** Race a promise against a timeout. */

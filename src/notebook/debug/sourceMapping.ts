@@ -124,7 +124,7 @@ export class SourceMapping {
     }
     return {
       cellUri: mapping.cellUri,
-      cellLine: tempLine - mapping.startLine + 1,
+      cellLine: Math.max(1, tempLine - mapping.startLine + 1),
       cellIndex: mapping.cellIndex,
     };
   }

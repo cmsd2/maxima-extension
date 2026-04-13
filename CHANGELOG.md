@@ -1,7 +1,15 @@
 # Change Log
 
 ## [Unreleased]
+### Added
+- Screenshots on the marketplace page showing notebook and debugger features
+- Copilot code generation instructions for Maxima syntax (comma/ev, terminators, Unicode Greek, plotting)
+- Recommend [Unicode Latex](https://marketplace.visualstudio.com/items?itemName=oijaz.unicode-latex) extension for typing Greek letters and math symbols
+- LM tool descriptions updated with Maxima syntax tips
+
 ### Fixed
+- SVG plots from gnuplot no longer waste vertical space — fixed dimensions are replaced with responsive sizing
+- Source mapping: negative cell line numbers no longer occur when the debugger stops on a line before a cell's range
 - Notebook debugging: breakpoints in unsaved (untitled) notebooks are now preserved when the notebook is saved at debug launch time. The extension saves the notebook before generating the temp file and migrates breakpoints from old untitled cell URIs to new file-backed cell URIs automatically.
 
 ## [0.1.0]

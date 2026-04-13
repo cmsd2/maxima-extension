@@ -2,6 +2,10 @@
 
 VS Code extension for [Maxima](https://maxima.sourceforge.io/), a computer algebra system. Provides syntax highlighting, language server integration, interactive debugging, notebook support, and AI integration.
 
+![Notebook with symbolic math and plots](media/notebook-demo.png)
+
+![Debugger paused at a breakpoint with variable inspection](media/debugger-demo.png)
+
 ## Features
 
 The extension has two layers: **built-in features** that work immediately with no extra binaries, and **language tool features** powered by optional Rust binaries from the [aximar](https://github.com/cmsd2/aximar) repository. The extension can auto-download the tools on first use — see [Installation](#installation).
@@ -161,6 +165,10 @@ Open VS Code settings (Ctrl+, or Cmd+,) and search for "maxima":
 | `maxima.maximaPath` | `""` | Absolute path to the Maxima binary. Used by the debugger. If empty, searches PATH. |
 | `maxima.notebook.mcpPath` | `""` | Absolute path to the `aximar-mcp` binary. If empty, searches PATH. |
 | `maxima.notebook.evalTimeout` | `60` | Cell evaluation timeout in seconds. |
+
+## Recommended companion extensions
+
+- **[Unicode Latex](https://marketplace.visualstudio.com/items?itemName=oijaz.unicode-latex)** — Type `\pi` + Tab to insert `π`, `\alpha` + Tab for `α`, etc. Maxima notebooks automatically translate Unicode Greek letters and math symbols to their Maxima equivalents (`π` → `%pi`, `θ` → `theta`), so you can write natural-looking math. Offered as an optional install with this extension.
 
 ## Requirements
 
