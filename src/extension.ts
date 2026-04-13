@@ -10,8 +10,8 @@ import {
   NotebookController,
   NOTEBOOK_TYPE,
   NOTEBOOK_TYPE_COMPAT,
+  registerLmTools,
 } from "./notebook/controller";
-import { registerLmTools } from "./notebook/lmTools";
 import {
   debugNotebook,
   debugFromCell,
