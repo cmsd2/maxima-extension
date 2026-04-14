@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- Debug adapter logs now appear in the "Maxima Debug Adapter" output channel instead of writing to `/tmp/maxima-dap.log`
 - Screenshots on the marketplace page showing notebook and debugger features
 - Copilot code generation instructions for Maxima syntax (comma/ev, terminators, Unicode Greek, plotting)
 - Recommend [Unicode Latex](https://marketplace.visualstudio.com/items?itemName=oijaz.unicode-latex) extension for typing Greek letters and math symbols

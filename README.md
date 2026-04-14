@@ -166,6 +166,17 @@ Open VS Code settings (Ctrl+, or Cmd+,) and search for "maxima":
 | `maxima.notebook.mcpPath` | `""` | Absolute path to the `aximar-mcp` binary. If empty, searches PATH. |
 | `maxima.notebook.evalTimeout` | `60` | Cell evaluation timeout in seconds. |
 
+## Output channels
+
+The extension provides several output channels (View > Output, then select from the dropdown) for diagnostics and troubleshooting:
+
+| Channel | Contents |
+|---------|----------|
+| **Maxima Debug Adapter** | Tracing logs from the `maxima-dap` process (DAP lifecycle, breakpoint resolution, Maxima communication) |
+| **Maxima Protocol** | Raw Maxima I/O filtered out of the debug console (sentinels, prompts, breakpoint messages) |
+| **Maxima Notebook** | Notebook kernel lifecycle (MCP server spawn, connection, tool calls) |
+| **Maxima Notebook Debug Tracker** | Source mapping and breakpoint remapping during notebook debug sessions |
+
 ## Recommended companion extensions
 
 - **[Unicode Latex](https://marketplace.visualstudio.com/items?itemName=oijaz.unicode-latex)** — Type `\pi` + Tab to insert `π`, `\alpha` + Tab for `α`, etc. Maxima notebooks automatically translate Unicode Greek letters and math symbols to their Maxima equivalents (`π` → `%pi`, `θ` → `theta`), so you can write natural-looking math. Offered as an optional install with this extension.

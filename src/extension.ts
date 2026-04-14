@@ -19,6 +19,7 @@ import {
   registerDebugLmTools,
 } from "./notebook/debug";
 import { BinaryManager } from "./binaryManager";
+import { DapProcessAdapter } from "./notebook/debug/dapAdapter";
 
 let client: LanguageClient | undefined;
 let mcpManager: McpProcessManager | undefined;
@@ -68,7 +69,10 @@ export async function activate(
   );
 
   // --- Debug adapter ---
-  const dapFactory = new MaximaDapDescriptorFactory(binaryManager);
+  // maxima-dap tracing logs (stderr) are captured by DapProcessAdapter.
+  const dapOutput = vscode.window.createOutputChannel("Maxima Debug Adapter");
+  context.subscriptions.push(dapOutput);
+  const dapFactory = new MaximaDapDescriptorFactory(binaryManager, dapOutput);
   context.subscriptions.push(
     vscode.debug.registerDebugAdapterDescriptorFactory("maxima", dapFactory),
   );
@@ -321,9 +325,11 @@ class MaximaDapDescriptorFactory
   implements vscode.DebugAdapterDescriptorFactory
 {
   private bm: BinaryManager | undefined;
+  private outputChannel: vscode.OutputChannel;
 
-  constructor(bm: BinaryManager | undefined) {
+  constructor(bm: BinaryManager | undefined, outputChannel: vscode.OutputChannel) {
     this.bm = bm;
+    this.outputChannel = outputChannel;
   }
 
   createDebugAdapterDescriptor(
@@ -332,13 +338,12 @@ class MaximaDapDescriptorFactory
   ): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
     const command = this.bm?.resolveTool("maxima-dap") ?? "maxima-dap";
 
-    return new vscode.DebugAdapterExecutable(command, [], {
-      env: {
-        ...process.env,
-        RUST_LOG: "maxima_dap=debug",
-        MAXIMA_DAP_LOG: "/tmp/maxima-dap.log",
-      },
+    const adapter = new DapProcessAdapter(command, this.outputChannel, {
+      ...process.env,
+      RUST_LOG: "maxima_dap=debug",
     });
+
+    return new vscode.DebugAdapterInlineImplementation(adapter);
   }
 }
 
