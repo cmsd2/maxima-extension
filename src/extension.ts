@@ -27,6 +27,36 @@ let mcpManager: McpProcessManager | undefined;
 let notebookController: NotebookController | undefined;
 let binaryManager: BinaryManager | undefined;
 
+const clientOptions: LanguageClientOptions = {
+  documentSelector: [
+    { scheme: "file", language: "maxima" },
+    { scheme: "vscode-notebook-cell", language: "maxima" },
+  ],
+};
+
+/** Create (or recreate) the LSP client with the currently resolved binary. */
+function createClient(): LanguageClient {
+  const cmd = binaryManager?.resolveTool("maxima-lsp");
+  if (!cmd) {
+    throw new Error("maxima-lsp binary not found");
+  }
+  return new LanguageClient(
+    "maxima-lsp",
+    "Maxima Language Server",
+    { command: cmd, args: [] },
+    clientOptions,
+  );
+}
+
+/** Stop the current client (if any) and start a fresh one. */
+async function restartClient(): Promise<void> {
+  if (client) {
+    await client.stop();
+  }
+  client = createClient();
+  await client.start();
+}
+
 /** Resolves once the window has focus, or immediately if already focused. */
 function whenWindowReady(): Promise<void> {
   if (vscode.window.state.focused) {
@@ -259,35 +289,6 @@ export async function activate(
   );
 
   // --- LSP client ---
-  const clientOptions: LanguageClientOptions = {
-    documentSelector: [
-      { scheme: "file", language: "maxima" },
-      { scheme: "vscode-notebook-cell", language: "maxima" },
-    ],
-  };
-
-  /** Create (or recreate) the LSP client with the currently resolved binary. */
-  function createClient(): LanguageClient {
-    const cmd = binaryManager?.resolveTool("maxima-lsp");
-    if (!cmd) {
-      throw new Error("maxima-lsp binary not found");
-    }
-    return new LanguageClient(
-      "maxima-lsp",
-      "Maxima Language Server",
-      { command: cmd, args: [] },
-      clientOptions,
-    );
-  }
-
-  /** Stop the current client (if any) and start a fresh one. */
-  async function restartClient(): Promise<void> {
-    if (client) {
-      await client.stop();
-    }
-    client = createClient();
-    await client.start();
-  }
 
   // Register LSP commands unconditionally so they're always available in the
   // command palette, even when the language server binary is missing at startup.
