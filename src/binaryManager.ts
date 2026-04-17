@@ -413,7 +413,7 @@ export class BinaryManager {
       const options = {
         hostname: "api.github.com",
         path: `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`,
-        headers: { "User-Agent": "maxima-extension" },
+        headers: { "User-Agent": "maxima-notebook" },
       };
 
       https
@@ -471,7 +471,7 @@ export class BinaryManager {
       const options = {
         hostname: parsedUrl.hostname,
         path: parsedUrl.pathname + parsedUrl.search,
-        headers: { "User-Agent": "maxima-extension" },
+        headers: { "User-Agent": "maxima-notebook" },
       };
 
       https
@@ -513,7 +513,7 @@ export class BinaryManager {
         const options = {
           hostname: parsedUrl.hostname,
           path: parsedUrl.pathname + parsedUrl.search,
-          headers: { "User-Agent": "maxima-extension" },
+          headers: { "User-Agent": "maxima-notebook" },
         };
 
         https

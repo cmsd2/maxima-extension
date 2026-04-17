@@ -4,7 +4,7 @@ Thank you for your interest in contributing to the Maxima VS Code extension! Thi
 
 ## Reporting Issues
 
-- Search [existing issues](https://github.com/cmsd2/maxima-extension/issues) before opening a new one.
+- Search [existing issues](https://github.com/cmsd2/maxima-notebook/issues) before opening a new one.
 - Include the VS Code version, extension version, and OS.
 - For language server or debugger issues, include the relevant output channel logs (View > Output, then select "Maxima Language Server", "Maxima Protocol", or "Maxima Notebook" from the dropdown).
 - If the problem involves specific Maxima code, include a minimal reproducing example.
@@ -26,7 +26,7 @@ The Rust binaries (`maxima-lsp`, `maxima-dap`, `aximar-mcp`) live in the separat
 ## Project Structure
 
 ```
-maxima-extension/
+maxima-notebook/
 ├── src/
 │   └── extension.ts              # Entry point: LSP client + Run File command
 ├── syntaxes/
@@ -51,8 +51,8 @@ maxima-extension/
 ## Setup
 
 ```sh
-git clone https://github.com/yshl/maxima-extension.git
-cd maxima-extension
+git clone https://github.com/cmsd2/maxima-notebook.git
+cd maxima-notebook
 npm install
 npm run compile
 ```
@@ -70,7 +70,7 @@ npm run package          # Production build (minified, no source maps)
 
 ### Test in VS Code
 
-1. Open the `maxima-extension` folder in VS Code.
+1. Open the `maxima-notebook` folder in VS Code.
 2. Press **F5** to launch an Extension Development Host window.
    - This runs `npm run compile` automatically, then opens a new VS Code window with the extension loaded.
 3. Open any `.mac` file in the dev host to test syntax highlighting, commands, and LSP features.

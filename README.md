@@ -1,4 +1,4 @@
-# Maxima Extension for VS Code
+# Maxima Notebook for VS Code
 
 VS Code extension for [Maxima](https://maxima.sourceforge.io/), a computer algebra system. Provides syntax highlighting, language server integration, interactive debugging, notebook support, and AI integration.
 
@@ -111,8 +111,8 @@ The extension also auto-registers the managed `aximar-mcp` process as an MCP ser
 ### Extension
 
 ```sh
-git clone https://github.com/yshl/maxima-extension.git
-cd maxima-extension
+git clone https://github.com/cmsd2/maxima-notebook.git
+cd maxima-notebook
 npm install
 npm run compile
 ```

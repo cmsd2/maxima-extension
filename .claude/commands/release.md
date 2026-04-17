@@ -1,12 +1,12 @@
 ---
 name: release
-description: Release a new version of the maxima-extension VS Code extension
+description: Release a new version of the maxima-notebook VS Code extension
 argument-hint: "<new-version>"
 ---
 
-# Release maxima-extension
+# Release maxima-notebook
 
-Release a new version of the VS Code extension. This extension is NOT published to the marketplace — it is pushed to the `cmsd2` fork remote only.
+Release a new version of the VS Code extension to the VS Code marketplace.
 
 ## Arguments
 
@@ -52,8 +52,13 @@ If any check fails, report it and stop.
 ### 6. Push
 
 - Ask the user for confirmation before pushing.
-- Push to the **cmsd2** remote (not origin): `git push cmsd2 main && git push cmsd2 v<new-version>`
+- Push: `git push origin main && git push origin v<new-version>`
 
-### 7. Summary
+### 7. Publish to marketplace
 
-Print a summary: version, tag, remote pushed to, and remind the user that this extension is not marketplace-published.
+- Run `npx @vscode/vsce publish` to publish to the VS Code marketplace.
+- If the user hasn't logged in yet, instruct them to run `npx @vscode/vsce login cmsd2` first.
+
+### 8. Summary
+
+Print a summary: version, tag, and marketplace link (`https://marketplace.visualstudio.com/items?itemName=cmsd2.maxima-notebook`).

@@ -1,7 +1,7 @@
 {
-  "name": "maxima-extension",
-  "displayName": "Maxima Extension",
-  "description": "VSCode Extension for Maxima, a Computer Algebra system",
+  "name": "maxima-notebook",
+  "displayName": "Maxima Notebook",
+  "description": "VS Code extension for Maxima: notebooks, debugger, language server, and AI integration",
   "version": "0.1.0",
   "engines": {
     "vscode": "^1.99.0"
@@ -20,17 +20,16 @@
     "debugger",
     "language server"
   ],
-  "publisher": "OhtaYasuhiro",
-  "author": "Yasuhiro Ohta",
+  "publisher": "cmsd2",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yshl/maxima-extension.git"
+    "url": "https://github.com/cmsd2/maxima-notebook.git"
   },
   "bugs": {
-    "url": "https://github.com/yshl/maxima-extension/issues"
+    "url": "https://github.com/cmsd2/maxima-notebook/issues"
   },
-  "homepage": "https://github.com/yshl/maxima-extension#readme",
+  "homepage": "https://github.com/cmsd2/maxima-notebook#readme",
   "icon": "icon.png",
   "extensionPack": [
     "oijaz.unicode-latex"
